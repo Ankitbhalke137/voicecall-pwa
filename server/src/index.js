@@ -41,10 +41,6 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  const existing = activeConnections.get(userId);
-  if (existing && existing.readyState === WebSocket.OPEN) {
-    existing.close(4002, 'New connection for same user');
-  }
   activeConnections.set(userId, ws);
   console.log(`[+] ${userId} connected (${activeConnections.size} active)`);
 

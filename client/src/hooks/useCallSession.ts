@@ -37,7 +37,7 @@ export function useCallSession(userId: string, userName: string) {
     };
 
     return () => {
-      manager.hangup();
+      manager.dispose();
       managerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

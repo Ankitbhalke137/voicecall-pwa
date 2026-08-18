@@ -245,6 +245,20 @@ export class CallSessionManager {
   }
 
   // ============ Shared ============
+  public dispose(): void {
+    this.onStatusChange = null;
+    this.onIncomingCall = null;
+    this.onRemoteStream = null;
+    this.onError = null;
+    this.onRemoteHangup = null;
+    this.onSocketState = null;
+    try {
+      this.socket.close();
+    } catch {
+      /* ignore */
+    }
+  }
+
   public hangup(): void {
     this.cleanupPending();
     this.remoteStream?.getTracks().forEach((track) => track.stop());

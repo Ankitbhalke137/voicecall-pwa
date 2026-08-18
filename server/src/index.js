@@ -30,6 +30,7 @@ app.post('/api/v1/calls/reject', (req, res) => {
 });
 
 wss.on('connection', (ws, req) => {
+  console.log(`[ws-connect] ${req.url} from ${req.headers.origin || 'no-origin'}`);
   let userId = null;
 
   const url = new URL(req.url, 'http://localhost');
@@ -122,6 +123,10 @@ function broadcastToCallers(ws, userId, data) {
     target.send(JSON.stringify({ type, callId: data.callId, senderId: userId }));
   }
 }
+
+httpServer.on('upgrade', (req) => {
+  console.log(`[ws-attempt] ${req.url} origin=${req.headers.origin || 'none'}`);
+});
 
 const PORT = process.env.PORT || 8080;
 httpServer.listen(PORT, () => {

@@ -25,7 +25,8 @@ export class CallSessionManager {
 
   constructor(socketUrl: string, myId: string, _myName: string) {
     this.myId = myId;
-    this.socket = new WebSocket(socketUrl);
+    const sep = socketUrl.includes('?') ? '&' : '?';
+    this.socket = new WebSocket(`${socketUrl}${sep}userId=${encodeURIComponent(myId)}`);
     this.config = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },

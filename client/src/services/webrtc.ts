@@ -13,6 +13,8 @@ export class CallSessionManager {
   private targetId: string | null = null;
   private callId: string | null = null;
   private remoteStream: MediaStream | null = null;
+  private pendingOffer: RTCSessionDescriptionInit | null = null;
+  private pendingIceCandidates: RTCIceCandidateInit[] = [];
 
   public onStatusChange: ((status: CallStatus) => void) | null = null;
   public onIncomingCall: ((caller: UserInfo, callId: string) => void) | null = null;
@@ -55,8 +57,16 @@ export class CallSessionManager {
         resolve();
         return;
       }
-      this.socket.onopen = () => resolve();
-      this.socket.onerror = () => reject(new Error('Failed to connect to signaling server'));
+      const onOpen = () => {
+        this.socket.removeEventListener('open', onOpen);
+        resolve();
+      };
+      const onError = () => {
+        this.socket.removeEventListener('error', onError);
+        reject(new Error('Failed to connect to signaling server'));
+      };
+      this.socket.addEventListener('open', onOpen);
+      this.socket.addEventListener('error', onError);
     });
   }
 
@@ -107,7 +117,7 @@ export class CallSessionManager {
         this.setStatus('CONNECTED');
       } else if (state === 'failed') {
         this.handleConnectionFailure();
-      } else if (state === 'disconnected' && this.peerConnection?.iceConnectionState !== 'checking') {
+      } else if (state === 'disconnected') {
         this.setStatus('RECONNECTING');
       }
     };
@@ -118,7 +128,6 @@ export class CallSessionManager {
       }
     };
 
-    this.peerConnection.ondatachannel = () => {};
     return this.peerConnection;
   }
 
@@ -134,6 +143,26 @@ export class CallSessionManager {
     }
   }
 
+  private addLocalTracks() {
+    if (!this.peerConnection || !this.localStream) return;
+    this.localStream.getTracks().forEach((track) => {
+      this.peerConnection!.addTrack(track, this.localStream!);
+    });
+  }
+
+  private async flushPendingIceCandidates() {
+    if (!this.peerConnection) return;
+    for (const candidate of this.pendingIceCandidates) {
+      try {
+        await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error('Failed to add buffered ICE candidate:', err);
+      }
+    }
+    this.pendingIceCandidates = [];
+  }
+
+  // ============ Outbound call ============
   public async initiateCall(targetId: string, _targetName: string): Promise<void> {
     this.targetId = targetId;
     this.callId = `call-${Date.now()}-${this.myId}`;
@@ -149,11 +178,8 @@ export class CallSessionManager {
     });
 
     this.createPeerConnection(targetId);
+    this.addLocalTracks();
     if (!this.peerConnection || !this.localStream) return;
-
-    this.localStream.getTracks().forEach((track) => {
-      this.peerConnection!.addTrack(track, this.localStream!);
-    });
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
@@ -165,6 +191,7 @@ export class CallSessionManager {
     });
   }
 
+  // ============ Inbound call ============
   public async acceptCall(callerId: string, incomingCallId?: string): Promise<void> {
     this.targetId = callerId;
     if (incomingCallId) this.callId = incomingCallId;
@@ -174,11 +201,20 @@ export class CallSessionManager {
     await this.initializeMedia();
 
     this.createPeerConnection(callerId);
-    if (!this.peerConnection || !this.localStream) return;
+    this.addLocalTracks();
 
-    this.localStream.getTracks().forEach((track) => {
-      this.peerConnection!.addTrack(track, this.localStream!);
-    });
+    if (this.pendingOffer) {
+      await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(this.pendingOffer));
+      const answer = await this.peerConnection!.createAnswer();
+      await this.peerConnection!.setLocalDescription(answer);
+      this.send({
+        type: 'SDP_ANSWER',
+        targetUserId: callerId,
+        sdp: answer
+      });
+      this.pendingOffer = null;
+      await this.flushPendingIceCandidates();
+    }
 
     this.send({ type: 'CALL_ACCEPTED', callId: this.callId || incomingCallId || '', targetUserId: callerId });
   }
@@ -189,40 +225,24 @@ export class CallSessionManager {
     } else if (this.callId) {
       this.send({ type: 'CALL_REJECTED', callId: this.callId, targetUserId: this.targetId! });
     }
+    this.cleanupPending();
     this.setStatus('IDLE');
   }
 
-  public async handleIncomingOffer(callerId: string, offerSdp: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.peerConnection || this.targetId !== callerId) {
-      this.targetId = callerId;
-      this.createPeerConnection(callerId);
-      if (!this.localStream) {
-        await this.initializeMedia();
-      }
-      if (this.localStream && this.peerConnection) {
-        this.localStream.getTracks().forEach((track) => {
-          this.peerConnection!.addTrack(track, this.localStream!);
-        });
-      }
+  private cleanupPending() {
+    this.pendingOffer = null;
+    this.pendingIceCandidates = [];
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
     }
-    if (!this.peerConnection) return;
-
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offerSdp));
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
-
-    this.send({
-      type: 'SDP_ANSWER',
-      targetUserId: callerId,
-      sdp: answer
-    });
-  }
-
-  public hangup(): void {
-    this.peerConnection?.close();
-    this.peerConnection = null;
     this.localStream?.getTracks().forEach((track) => track.stop());
     this.localStream = null;
+  }
+
+  // ============ Shared ============
+  public hangup(): void {
+    this.cleanupPending();
     this.remoteStream?.getTracks().forEach((track) => track.stop());
     this.remoteStream = null;
 
@@ -258,12 +278,26 @@ export class CallSessionManager {
         }
         case 'CALL_REJECTED': {
           this.onError?.('Call was declined.');
-          this.hangup();
+          this.cleanupPending();
+          this.setStatus('IDLE');
           break;
         }
         case 'SDP_OFFER': {
           const sender = (msg as any).senderId || msg.targetUserId;
-          await this.handleIncomingOffer(sender, msg.sdp);
+          this.targetId = sender;
+          this.pendingOffer = msg.sdp;
+          if (this.peerConnection && this.localStream) {
+            try {
+              await this.peerConnection.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+              const answer = await this.peerConnection.createAnswer();
+              await this.peerConnection.setLocalDescription(answer);
+              this.send({ type: 'SDP_ANSWER', targetUserId: sender, sdp: answer });
+              this.pendingOffer = null;
+              await this.flushPendingIceCandidates();
+            } catch (err) {
+              console.error('Failed to process late SDP offer:', err);
+            }
+          }
           break;
         }
         case 'SDP_ANSWER':
@@ -272,12 +306,14 @@ export class CallSessionManager {
           }
           break;
         case 'ICE_CANDIDATE':
-          if (this.peerConnection) {
+          if (this.peerConnection && this.pendingOffer === null) {
             try {
               await this.peerConnection.addIceCandidate(new RTCIceCandidate(msg.candidate));
             } catch (err) {
               console.error('Failed to add ICE candidate:', err);
             }
+          } else {
+            this.pendingIceCandidates.push(msg.candidate);
           }
           break;
         case 'HANGUP':

@@ -27,7 +27,7 @@ export function useCallSession(userId: string, userName: string) {
     manager.onRemoteStream = () => {};
     manager.onError = setError;
     manager.onRemoteHangup = () => {
-      setError('Call ended by remote user.');
+      manager.hangup();
       reset();
     };
 

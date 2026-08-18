@@ -10,11 +10,15 @@ export class CallSessionManager {
   private socket: WebSocket;
   private config: WebRTCConfig;
   private myId: string;
+  private socketUrl: string;
   private targetId: string | null = null;
   private callId: string | null = null;
   private remoteStream: MediaStream | null = null;
   private pendingOffer: RTCSessionDescriptionInit | null = null;
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
+  private disposed = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   public onStatusChange: ((status: CallStatus) => void) | null = null;
   public onSocketState: ((state: 'connecting' | 'open' | 'closed' | 'error') => void) | null = null;
@@ -25,6 +29,7 @@ export class CallSessionManager {
 
   constructor(socketUrl: string, myId: string, _myName: string) {
     this.myId = myId;
+    this.socketUrl = socketUrl;
     const sep = socketUrl.includes('?') ? '&' : '?';
     this.socket = new WebSocket(`${socketUrl}${sep}userId=${encodeURIComponent(myId)}`);
     this.config = {
@@ -51,9 +56,45 @@ export class CallSessionManager {
       ]
     };
     this.registerSocketEvents();
-    this.socket.onopen = () => this.onSocketState?.('open');
-    this.socket.onclose = () => this.onSocketState?.('closed');
-    this.socket.onerror = () => this.onSocketState?.('error');
+    this.socket.onopen = () => {
+      this.reconnectAttempts = 0;
+      this.onSocketState?.('open');
+    };
+    this.socket.onclose = () => {
+      this.onSocketState?.('closed');
+      this.scheduleReconnect();
+    };
+    this.socket.onerror = () => {
+      this.onSocketState?.('error');
+    };
+  }
+
+  private scheduleReconnect(): void {
+    if (this.disposed) return;
+    if (this.reconnectTimer) return;
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 15000);
+    this.reconnectAttempts += 1;
+    this.onSocketState?.('connecting');
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.disposed) return;
+      try {
+        const sep = this.socketUrl.includes('?') ? '&' : '?';
+        this.socket = new WebSocket(`${this.socketUrl}${sep}userId=${encodeURIComponent(this.myId)}`);
+        this.registerSocketEvents();
+        this.socket.onopen = () => {
+          this.reconnectAttempts = 0;
+          this.onSocketState?.('open');
+        };
+        this.socket.onclose = () => {
+          this.onSocketState?.('closed');
+          this.scheduleReconnect();
+        };
+        this.socket.onerror = () => this.onSocketState?.('error');
+      } catch {
+        this.scheduleReconnect();
+      }
+    }, delay);
   }
 
   public waitForConnection(): Promise<void> {
@@ -247,6 +288,11 @@ export class CallSessionManager {
 
   // ============ Shared ============
   public dispose(): void {
+    this.disposed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.onStatusChange = null;
     this.onIncomingCall = null;
     this.onRemoteStream = null;
@@ -341,12 +387,6 @@ export class CallSessionManager {
         case 'ERROR':
           this.onError?.(msg.message);
           break;
-      }
-    };
-
-    this.socket.onclose = () => {
-      if (this.peerConnection?.connectionState === 'connected') {
-        this.setStatus('RECONNECTING');
       }
     };
   }

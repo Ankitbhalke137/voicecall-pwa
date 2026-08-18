@@ -2,13 +2,35 @@
 
 A production-grade, zero-install voice calling application built as a Progressive Web App (PWA) using WebRTC. No app stores, no downloads — install directly from the browser.
 
-## Status: Phase 1 — Core Foundation ✅
+## Status: Phase 1 — Core Foundation ✅ COMPLETE (verified working on LAN)
 
 - [x] React + Vite + TypeScript PWA (manifest + service worker)
 - [x] Microphone capture via `getUserMedia()`
 - [x] Node.js + WebSocket signaling server
 - [x] P2P WebRTC audio between two browser tabs
+- [x] P2P WebRTC audio between two devices on same WiFi (HTTPS)
 - [x] Free STUN/TURN servers (Google + Open Relay Project)
+- [x] Call state machine (IDLE / RINGING / CONNECTED / RECONNECTING)
+- [x] Call lifecycle: ring → answer/decline → talk → hangup
+- [x] Web Audio API ringtone (no audio files needed)
+- [x] Remote audio playback (auto-attach + autoplay)
+- [x] Signaling socket auto-reconnect with exponential backoff
+- [x] ICE restart on connection failure
+- [x] Automated signaling tests (7/7 passing) + E2E flow test
+- [x] HTTPS on LAN via mkcert (mic requires secure context)
+- [x] Free TURN relay fallback for strict NATs
+
+## Phase 1 progress notes
+
+All Phase 1 features are implemented, tested, and verified on real devices over WiFi
+(call both directions, audio both ways, ringtone, hangup).
+
+Bugs found and fixed during verification:
+- Callee auto-answered before user clicked Answer (offer now buffered)
+- Duplicate user IDs across tabs (per-tab sessionStorage)
+- Client never sent `?userId=` in WebSocket URL
+- Remote audio stream never attached to `<audio>` element
+- Mobile WS drops causing missed incoming calls (auto-reconnect added)
 
 ## Quick Start
 
@@ -80,8 +102,8 @@ node test/signaling.test.mjs
 
 | Phase | Status |
 |-------|--------|
-| 1. Core Foundation | ✅ In progress |
-| 2. User System & Notifications | ⬜ |
+| 1. Core Foundation | ✅ Complete — P2P calling works on desktop + mobile (LAN) |
+| 2. User System & Notifications | ⬜ Next |
 | 3. Production Features | ⬜ |
 | 4. Polish & iOS | ⬜ |
 | 5. Advanced Features | ⬜ |

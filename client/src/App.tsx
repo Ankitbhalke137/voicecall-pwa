@@ -9,7 +9,7 @@ export default function App() {
       id = `user-${Math.random().toString(36).slice(2, 10)}`;
       sessionStorage.setItem('voicecall-user-id', id);
     }
-    return id + '-' + Math.random().toString(36).slice(2, 6);
+    return id;
   });
   const [userName] = useState(() => {
     let name = sessionStorage.getItem('voicecall-user-name');

@@ -17,6 +17,7 @@ export class CallSessionManager {
   private pendingIceCandidates: RTCIceCandidateInit[] = [];
 
   public onStatusChange: ((status: CallStatus) => void) | null = null;
+  public onSocketState: ((state: 'connecting' | 'open' | 'closed' | 'error') => void) | null = null;
   public onIncomingCall: ((caller: UserInfo, callId: string) => void) | null = null;
   public onRemoteStream: ((stream: MediaStream) => void) | null = null;
   public onError: ((message: string) => void) | null = null;
@@ -49,6 +50,9 @@ export class CallSessionManager {
       ]
     };
     this.registerSocketEvents();
+    this.socket.onopen = () => this.onSocketState?.('open');
+    this.socket.onclose = () => this.onSocketState?.('closed');
+    this.socket.onerror = () => this.onSocketState?.('error');
   }
 
   public waitForConnection(): Promise<void> {

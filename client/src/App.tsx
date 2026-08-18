@@ -22,7 +22,7 @@ export default function App() {
   const [targetId, setTargetId] = useState('');
   const [targetName, setTargetName] = useState('');
 
-  const { status, remoteUser, error, call, answer, decline, hangup } = useCallSession(userId, userName);
+  const { status, remoteUser, error, socketState, call, answer, decline, hangup } = useCallSession(userId, userName);
 
   const isCallActive =
     status === 'RINGING_OUTBOUND' ||
@@ -30,12 +30,20 @@ export default function App() {
     status === 'CONNECTED' ||
     status === 'RECONNECTING';
 
+  const socketLabel: Record<string, { text: string; cls: string }> = {
+    connecting: { text: 'Connecting…', cls: 'socket-connecting' },
+    open: { text: 'Server connected', cls: 'socket-open' },
+    closed: { text: 'Server disconnected', cls: 'socket-closed' },
+    error: { text: 'Connection error', cls: 'socket-closed' }
+  };
+  const socketInfo = socketLabel[socketState];
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>VoiceCall</h1>
         <div className="user-chip">
-          <span className="user-dot" /> {userName}
+          <span className={`socket-dot ${socketInfo.cls}`} /> {socketInfo.text}
         </div>
       </header>
 

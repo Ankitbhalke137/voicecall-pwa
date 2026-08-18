@@ -66,6 +66,25 @@ body {
   background: var(--green);
 }
 
+.socket-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.socket-open {
+  background: var(--green);
+}
+
+.socket-connecting {
+  background: #f59e0b;
+}
+
+.socket-closed {
+  background: var(--red);
+}
+
 .app-main {
   flex: 1;
   display: flex;

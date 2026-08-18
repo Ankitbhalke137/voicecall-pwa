@@ -1,11 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CallSessionManager } from '../services/webrtc';
 import { useCallStore } from '../store/callStore';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'ws://localhost:8080/ws';
 
+export type SocketState = 'connecting' | 'open' | 'closed' | 'error';
+
 export function useCallSession(userId: string, userName: string) {
   const managerRef = useRef<CallSessionManager | null>(null);
+  const [socketState, setSocketState] = useState<SocketState>('connecting');
   const {
     status,
     remoteUser,
@@ -22,6 +25,8 @@ export function useCallSession(userId: string, userName: string) {
     const manager = new CallSessionManager(SOCKET_URL, userId, userName);
     managerRef.current = manager;
 
+    setSocketState('connecting');
+    manager.onSocketState = setSocketState;
     manager.onStatusChange = setStatus;
     manager.onIncomingCall = (caller, callId) => setIncoming(caller, callId);
     manager.onRemoteStream = () => {};
@@ -69,5 +74,5 @@ export function useCallSession(userId: string, userName: string) {
     reset();
   };
 
-  return { status, remoteUser, error, call, answer, decline, hangup };
+  return { status, remoteUser, error, socketState, call, answer, decline, hangup };
 }

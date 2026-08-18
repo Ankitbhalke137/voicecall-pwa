@@ -4,18 +4,18 @@ import CallUI from './components/CallUI';
 
 export default function App() {
   const [userId] = useState(() => {
-    let id = localStorage.getItem('voicecall-user-id');
+    let id = sessionStorage.getItem('voicecall-user-id');
     if (!id) {
       id = `user-${Math.random().toString(36).slice(2, 10)}`;
-      localStorage.setItem('voicecall-user-id', id);
+      sessionStorage.setItem('voicecall-user-id', id);
     }
     return id;
   });
   const [userName] = useState(() => {
-    let name = localStorage.getItem('voicecall-user-name');
+    let name = sessionStorage.getItem('voicecall-user-name');
     if (!name) {
       name = `User ${userId.slice(5, 9)}`;
-      localStorage.setItem('voicecall-user-name', name);
+      sessionStorage.setItem('voicecall-user-name', name);
     }
     return name;
   });

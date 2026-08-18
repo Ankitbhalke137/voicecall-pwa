@@ -17,7 +17,7 @@ import { readFileSync } from 'fs';
 
 app.get('/certs/rootCA.pem', (req, res) => {
   try {
-    const pem = readFileSync(new URL('../../../certs/rootCA.pem', import.meta.url));
+    const pem = readFileSync(new URL('../../certs/rootCA.pem', import.meta.url));
     res.type('application/x-pem-file').send(pem);
   } catch (err) {
     res.status(404).json({ error: 'CA cert not found' });

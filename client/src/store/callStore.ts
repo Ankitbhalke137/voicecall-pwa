@@ -14,6 +14,7 @@ const initialSession: CallSession = {
   callId: null,
   status: 'IDLE',
   remoteUser: null,
+  remoteStream: null,
   error: undefined
 };
 

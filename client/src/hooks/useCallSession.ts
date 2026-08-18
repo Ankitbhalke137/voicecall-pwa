@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { CallSessionManager } from '../services/webrtc';
 import { useCallStore } from '../store/callStore';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'ws://localhost:8080';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'ws://localhost:8080/ws';
 
 export function useCallSession(userId: string, userName: string) {
   const managerRef = useRef<CallSessionManager | null>(null);

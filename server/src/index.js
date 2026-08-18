@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.json());
 
 const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+const wss = new WebSocketServer({ server: httpServer });
 
 const activeConnections = new Map(); // userId -> WebSocket
 

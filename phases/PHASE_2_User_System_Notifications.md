@@ -8,6 +8,8 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
 
 ---
 
+## Status: ⬜ Not Started (Phase 1 complete — items marked [x] below already built in Phase 1)
+
 ## Tasks
 
 ### 2.1 Firebase Setup (Day 1)
@@ -107,7 +109,7 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
   CONNECTED → RECONNECTING → CONNECTED
   ```
 - [ ] Implement state transitions
-- [ ] Add ringtone playback on incoming/outgoing calls
+- [x] Add ringtone playback on incoming/outgoing calls (Web Audio API, built in Phase 1)
 - [ ] Create ringing UI component
 - [ ] Add vibration pattern for incoming calls
 

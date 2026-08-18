@@ -799,20 +799,23 @@ displayFingerprint(fingerprintHex);
 
 ```
 +-----------------------------------------------------------------------------------+
-| PHASE 1: Core Foundation & Prototyping (Weeks 1 - 2)                             |
+| PHASE 1: Core Foundation & Prototyping (Weeks 1 - 2) — ✅ COMPLETE               |
 |-----------------------------------------------------------------------------------|
-| [ ] Create React + Vite + TypeScript project                                      |
-| [ ] Build Web App Manifest & Service Worker registration                          |
-| [ ] Implement local audio capture using getUserMedia() API                        |
-| [ ] Set up local Node.js + WebSocket signaling server                             |
-| [ ] Implement Firebase Auth (free: 50K MAU)                                       |
-| [ ] Achieve P2P WebRTC audio stream between two desktop Chrome tabs               |
-| [ ] Test with free STUN servers (Google, Open Relay)                              |
+| [x] Create React + Vite + TypeScript project                                      |
+| [x] Build Web App Manifest & Service Worker registration                          |
+| [x] Implement local audio capture using getUserMedia() API                        |
+| [x] Set up local Node.js + WebSocket signaling server                             |
+| [ ] Implement Firebase Auth (free: 50K MAU) — moved to Phase 2                    |
+| [x] Achieve P2P WebRTC audio stream between two desktop Chrome tabs               |
+| [x] Test with free STUN servers (Google, Open Relay)                              |
+| [x] Verified P2P audio between two devices on same WiFi (HTTPS via mkcert)        |
+| [x] Web Audio API ringtone + remote audio playback                               |
+| [x] Signaling socket auto-reconnect with exponential backoff                      |
 +-----------------------------------------------------------------------------------+
                                          |
                                          v
 +-----------------------------------------------------------------------------------+
-| PHASE 2: User System & Notifications (Weeks 3 - 4)                               |
+| PHASE 2: User System & Notifications (Weeks 3 - 4) — ⬜ NEXT                     |
 |-----------------------------------------------------------------------------------|
 | [ ] Integrate Firebase Cloud Messaging (FCM) — completely free                    |
 | [ ] Program Service Worker push handlers and interactive notification actions     |

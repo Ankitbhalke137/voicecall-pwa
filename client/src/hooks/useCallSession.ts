@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { CallSessionManager } from '../services/webrtc';
 import { useCallStore } from '../store/callStore';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'ws://localhost:8080/ws';
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 
 export type SocketState = 'connecting' | 'open' | 'closed' | 'error';
 

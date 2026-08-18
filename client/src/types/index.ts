@@ -27,5 +27,6 @@ export interface CallSession {
   callId: string | null;
   status: CallStatus;
   remoteUser: UserInfo | null;
+  remoteStream: MediaStream | null;
   error?: string;
 }

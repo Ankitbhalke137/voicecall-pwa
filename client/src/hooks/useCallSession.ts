@@ -29,7 +29,14 @@ export function useCallSession(userId: string, userName: string) {
     manager.onSocketState = setSocketState;
     manager.onStatusChange = setStatus;
     manager.onIncomingCall = (caller, callId) => setIncoming(caller, callId);
-    manager.onRemoteStream = () => {};
+    manager.onRemoteStream = (stream) => {
+      const tracks = stream.getAudioTracks();
+      const audio = document.getElementById('remote-audio') as HTMLAudioElement | null;
+      if (audio && tracks.length > 0) {
+        audio.srcObject = stream;
+        audio.play().catch(() => {});
+      }
+    };
     manager.onError = setError;
     manager.onRemoteHangup = () => {
       manager.hangup();

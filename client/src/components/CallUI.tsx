@@ -18,6 +18,35 @@ const STATUS_LABELS: Record<CallStatus, string> = {
   TERMINATED: 'Call Ended'
 };
 
+function playRingtone(status: CallStatus): () => void {
+  if (status !== 'RINGING_OUTBOUND' && status !== 'RINGING_INBOUND') return () => {};
+  let stopped = false;
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new AudioCtx();
+    const interval = setInterval(() => {
+      if (stopped) return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = status === 'RINGING_INBOUND' ? 800 : 600;
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.75);
+    }, 1200);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+      ctx.close().catch(() => {});
+    };
+  } catch {
+    return () => {};
+  }
+}
+
 export default function CallUI({ status, remoteName, onAnswer, onDecline, onHangup }: CallUIProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -25,9 +54,12 @@ export default function CallUI({ status, remoteName, onAnswer, onDecline, onHang
     if (!audioRef.current) return;
     if (status === 'CONNECTED') {
       audioRef.current.play().catch(() => {});
-    } else if (status === 'RINGING_OUTBOUND' || status === 'RINGING_INBOUND') {
-      audioRef.current.pause();
     }
+  }, [status]);
+
+  useEffect(() => {
+    const stopRingtone = playRingtone(status);
+    return stopRingtone;
   }, [status]);
 
   return (

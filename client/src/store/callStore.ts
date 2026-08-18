@@ -5,6 +5,7 @@ interface CallState extends CallSession {
   setStatus: (status: CallSession['status']) => void;
   setRemoteUser: (user: UserInfo | null) => void;
   setIncoming: (caller: UserInfo, callId: string) => void;
+  setRemoteStream: (stream: MediaStream | null) => void;
   setError: (message: string | undefined) => void;
   reset: () => void;
 }
@@ -23,6 +24,7 @@ export const useCallStore = create<CallState>((set) => ({
   setRemoteUser: (remoteUser) => set({ remoteUser }),
   setIncoming: (remoteUser, callId) =>
     set({ remoteUser, callId, status: 'RINGING_INBOUND' }),
+  setRemoteStream: (remoteStream) => set({ remoteStream }),
   setError: (error) => set({ error }),
-  reset: () => set({ ...initialSession })
+  reset: () => set({ ...initialSession, remoteStream: null })
 }));

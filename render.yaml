@@ -18,3 +18,4 @@ services:
         value: "0"
     healthCheckPath: /health
     autoDeploy: true
+    rootDir: server

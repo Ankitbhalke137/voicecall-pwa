@@ -1,4 +1,4 @@
-const CACHE_NAME = 'voicecall-v2';
+const CACHE_NAME = 'voicecall-v3';
 const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon-192.png',
@@ -21,6 +21,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  // Never cache API responses — stale contact/presence data breaks the app
+  if (event.request.url.includes('/api/')) return;
 
   // Network-first for navigation so dev/staging always gets fresh HTML
   if (event.request.mode === 'navigate') {
@@ -73,7 +76,7 @@ self.addEventListener('push', function (event) {
       data: {
         callId: data.callId,
         callerId: data.callerId,
-        roomUrl: `/?callId=${data.callId}&autoAnswer=true`
+        roomUrl: `/?callId=${data.callId}&callerId=${data.callerId}`
       },
       actions: [
         { action: 'answer', title: 'Answer', icon: '/icons/icon-192.png' },
@@ -102,7 +105,11 @@ self.addEventListener('notificationclick', function (event) {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
       for (let client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.postMessage({ type: 'ACCEPT_CALL_FROM_SW', callId: notificationData.callId });
+          client.postMessage({
+            type: 'ACCEPT_CALL_FROM_SW',
+            callId: notificationData.callId,
+            callerId: notificationData.callerId
+          });
           return client.focus();
         }
       }

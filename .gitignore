@@ -4,3 +4,5 @@ dist/
 .env
 .env.local
 *.log*.tsbuildinfo
+server/data/
+server/vapid.json

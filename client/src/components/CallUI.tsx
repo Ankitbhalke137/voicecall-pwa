@@ -62,6 +62,15 @@ export default function CallUI({ status, remoteName, onAnswer, onDecline, onHang
     return stopRingtone;
   }, [status]);
 
+  useEffect(() => {
+    if (status === 'RINGING_INBOUND' && 'vibrate' in navigator) {
+      navigator.vibrate?.([500, 250, 500, 250, 500]);
+    }
+    return () => {
+      navigator.vibrate?.(0);
+    };
+  }, [status]);
+
   return (
     <div className="call-ui">
       <audio ref={audioRef} id="remote-audio" autoPlay />

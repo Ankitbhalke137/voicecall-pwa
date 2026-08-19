@@ -1,8 +1,15 @@
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
-import { randomUUID } from 'crypto';
+import { readFileSync } from 'fs';
+import db from './db.js';
+import authRouter, { verifyToken } from './auth.js';
+import usersRouter from './users.js';
+import pushRouter, { ensureVapidKeys, sendPushToUser } from './push.js';
+import { activeConnections, sendTo, sendPresenceTo } from './presence.js';
+
+ensureVapidKeys();
 
 const app = express();
 app.use(cors());
@@ -11,9 +18,8 @@ app.use(express.json());
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
 
-const activeConnections = new Map(); // userId -> WebSocket
-
-import { readFileSync } from 'fs';
+const offlineBuffers = new Map(); // userId -> { messages: [], expiresAt }
+const OFFLINE_BUFFER_TTL_MS = 60_000;
 
 app.get('/certs/rootCA.pem', (req, res) => {
   try {
@@ -32,59 +38,147 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/api/v1/calls/reject', (req, res) => {
-  res.json({ ok: true });
-});
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1', usersRouter);
+app.use('/api/v1/push', pushRouter);
 
 app.post('/api/v1/calls/reject', (req, res) => {
   res.json({ ok: true });
 });
 
-wss.on('connection', (ws, req) => {
-  console.log(`[ws-connect] ${req.url} from ${req.headers.origin || 'no-origin'}`);
-  let userId = null;
-
+function resolveUserIdFromRequest(req) {
   const url = new URL(req.url, 'http://localhost');
-  userId = url.searchParams.get('userId');
+  const token = url.searchParams.get('token');
+  if (token) {
+    const payload = verifyToken(token);
+    if (payload?.sub) return payload.sub;
+  }
+  return url.searchParams.get('userId');
+}
 
+function getUserProfile(userId) {
+  return db
+    .prepare('SELECT id, username, display_name FROM users WHERE id = ?')
+    .get(userId);
+}
+
+function getContactIds(userId) {
+  return db
+    .prepare('SELECT contact_id FROM contacts WHERE user_id = ?')
+    .all(userId)
+    .map((r) => r.contact_id);
+}
+
+function getUsersWithContact(contactId) {
+  return db
+    .prepare('SELECT user_id FROM contacts WHERE contact_id = ?')
+    .all(contactId)
+    .map((r) => r.user_id);
+}
+
+function broadcastPresence(userId, online) {
+  const watchers = getUsersWithContact(userId);
+  if (!watchers.length) return;
+  for (const watcherId of watchers) {
+    sendPresenceTo(watcherId, userId, online);
+  }
+}
+
+function bufferForOfflineUser(userId) {
+  if (!offlineBuffers.has(userId)) {
+    offlineBuffers.set(userId, {
+      messages: [],
+      expiresAt: Date.now() + OFFLINE_BUFFER_TTL_MS
+    });
+  }
+  return offlineBuffers.get(userId);
+}
+
+function flushOfflineBuffer(userId) {
+  const buffered = offlineBuffers.get(userId);
+  if (!buffered) return;
+  offlineBuffers.delete(userId);
+  const ws = activeConnections.get(userId);
+  if (!ws) return;
+  for (const msg of buffered.messages) {
+    sendTo(ws, msg);
+  }
+  if (buffered.messages.length) {
+    console.log(`[buffer] flushed ${buffered.messages.length} messages to ${userId}`);
+  }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, buffered] of offlineBuffers) {
+    if (buffered.expiresAt < now) {
+      offlineBuffers.delete(userId);
+    }
+  }
+}, 30_000);
+
+wss.on('connection', (ws, req) => {
+  const userId = resolveUserIdFromRequest(req);
   if (!userId) {
-    ws.close(4001, 'Missing userId');
+    ws.close(4001, 'Missing userId or token');
     return;
   }
 
   activeConnections.set(userId, ws);
+  db.prepare("UPDATE users SET last_seen = datetime('now') WHERE id = ?").run(userId);
+  broadcastPresence(userId, true);
+  flushOfflineBuffer(userId);
   console.log(`[+] ${userId} connected (${activeConnections.size} active)`);
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let data;
     try {
       data = JSON.parse(raw.toString());
     } catch (err) {
-      ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid JSON' }));
+      sendTo(ws, { type: 'ERROR', message: 'Invalid JSON' });
       return;
     }
 
     switch (data.type) {
       case 'INITIATE_CALL': {
+        const caller = getUserProfile(userId);
         const target = activeConnections.get(data.targetUserId);
         if (target && target.readyState === WebSocket.OPEN) {
-          target.send(JSON.stringify({
+          sendTo(target, {
             type: 'INCOMING_CALL',
             callerId: userId,
-            callerName: `User ${userId.slice(0, 6)}`,
+            callerName: caller?.display_name || `User ${userId.slice(0, 6)}`,
             callId: data.callId
-          }));
+          });
           console.log(`[call] ${userId} -> ${data.targetUserId} (socket)`);
         } else {
-          ws.send(JSON.stringify({ type: 'ERROR', message: 'Target user is offline or not found' }));
-          console.log(`[call] ${userId} -> ${data.targetUserId} (OFFLINE)`);
+          const result = await sendPushToUser(data.targetUserId, {
+            type: 'INCOMING_CALL',
+            callId: data.callId,
+            callerId: userId,
+            callerName: caller?.display_name || `User ${userId.slice(0, 6)}`
+          });
+          if (result.status === 'no-subscription' || result.status === 'expired') {
+            sendTo(ws, {
+              type: 'ERROR',
+              message: 'Target user is offline and cannot receive push notifications'
+            });
+            console.log(`[call] ${userId} -> ${data.targetUserId} (OFFLINE, no push)`);
+          } else {
+            sendTo(ws, { type: 'CALL_PUSHED', callId: data.callId });
+            console.log(`[call] ${userId} -> ${data.targetUserId} (push, ${result.status})`);
+          }
         }
         break;
       }
 
       case 'CALL_ACCEPTED':
       case 'CALL_REJECTED': {
-        broadcastToCallers(ws, userId, data);
+        const target = activeConnections.get(data.targetUserId);
+        if (target && target.readyState === WebSocket.OPEN) {
+          const type = data.type === 'CALL_ACCEPTED' ? 'CALL_ACCEPTED' : 'CALL_REJECTED';
+          sendTo(target, { type, callId: data.callId, senderId: userId });
+        }
         break;
       }
 
@@ -93,7 +187,9 @@ wss.on('connection', (ws, req) => {
       case 'ICE_CANDIDATE': {
         const target = activeConnections.get(data.targetUserId);
         if (target && target.readyState === WebSocket.OPEN) {
-          target.send(JSON.stringify({ ...data, senderId: userId }));
+          sendTo(target, { ...data, senderId: userId });
+        } else {
+          bufferForOfflineUser(data.targetUserId).messages.push({ ...data, senderId: userId });
         }
         break;
       }
@@ -101,19 +197,20 @@ wss.on('connection', (ws, req) => {
       case 'HANGUP': {
         const target = activeConnections.get(data.targetUserId);
         if (target && target.readyState === WebSocket.OPEN) {
-          target.send(JSON.stringify({ type: 'HANGUP', senderId: userId }));
+          sendTo(target, { type: 'HANGUP', senderId: userId });
         }
         break;
       }
 
       default:
-        ws.send(JSON.stringify({ type: 'ERROR', message: `Unknown message type: ${data.type}` }));
+        sendTo(ws, { type: 'ERROR', message: `Unknown message type: ${data.type}` });
     }
   });
 
   ws.on('close', () => {
     if (userId && activeConnections.get(userId) === ws) {
       activeConnections.delete(userId);
+      broadcastPresence(userId, false);
     }
     console.log(`[-] ${userId} disconnected (${activeConnections.size} active)`);
   });
@@ -121,18 +218,6 @@ wss.on('connection', (ws, req) => {
   ws.on('error', (err) => {
     console.error('WS error:', err.message);
   });
-});
-
-function broadcastToCallers(ws, userId, data) {
-  const type = data.type === 'CALL_ACCEPTED' ? 'CALL_ACCEPTED' : 'CALL_REJECTED';
-  const target = activeConnections.get(data.targetUserId);
-  if (target && target.readyState === WebSocket.OPEN) {
-    target.send(JSON.stringify({ type, callId: data.callId, senderId: userId }));
-  }
-}
-
-httpServer.on('upgrade', (req) => {
-  console.log(`[ws-attempt] ${req.url} origin=${req.headers.origin || 'none'}`);
 });
 
 const PORT = process.env.PORT || 8080;

@@ -1,28 +1,43 @@
-import { useState } from 'react';
-import { useCallSession } from './hooks/useCallSession';
+import { useEffect, useState } from 'react';
+import { useAuthStore } from './store/authStore';
+import { useCallSession, storePendingAccept } from './hooks/useCallSession';
+import { setupPushNotifications, removePushNotifications } from './services/push';
 import CallUI from './components/CallUI';
+import ContactsPanel from './components/ContactsPanel';
+import AuthPage from './components/AuthPage';
 
 export default function App() {
-  const [userId] = useState(() => {
-    let id = sessionStorage.getItem('voicecall-user-id');
-    if (!id) {
-      id = `user-${Math.random().toString(36).slice(2, 10)}`;
-      sessionStorage.setItem('voicecall-user-id', id);
-    }
-    return id;
-  });
-  const [userName] = useState(() => {
-    let name = sessionStorage.getItem('voicecall-user-name');
-    if (!name) {
-      name = `User ${userId.slice(5, 9)}`;
-      sessionStorage.setItem('voicecall-user-name', name);
-    }
-    return name;
-  });
+  const { user, token, initializing, restore, logout } = useAuthStore();
   const [targetId, setTargetId] = useState('');
-  const [targetName, setTargetName] = useState('');
+  const [notifStatus, setNotifStatus] = useState<string | null>(null);
 
-  const { status, remoteUser, error, socketState, call, answer, decline, hangup } = useCallSession(userId, userName);
+  useEffect(() => {
+    restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const callId = params.get('callId');
+    const callerId = params.get('callerId');
+    if (callId && callerId) {
+      storePendingAccept(callerId, callId);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'ACCEPT_CALL_FROM_SW' && event.data.callId && event.data.callerId) {
+        storePendingAccept(event.data.callerId, event.data.callId);
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', handler);
+    return () => navigator.serviceWorker?.removeEventListener('message', handler);
+  }, []);
+
+  const { status, remoteUser, error, socketState, pushRinging, call, answer, decline, hangup } =
+    useCallSession(user?.id || '', user?.display_name || '', token);
 
   const isCallActive =
     status === 'RINGING_OUTBOUND' ||
@@ -38,12 +53,45 @@ export default function App() {
   };
   const socketInfo = socketLabel[socketState];
 
+  async function handleEnableNotifications() {
+    setNotifStatus(null);
+    const result = await setupPushNotifications();
+    setNotifStatus(result.enabled ? 'Notifications enabled — you can receive calls with the app closed.' : `Notifications unavailable: ${result.reason}`);
+  }
+
+  async function handleLogout() {
+    await removePushNotifications();
+    logout();
+  }
+
+  if (initializing) {
+    return (
+      <div className="app">
+        <div className="app-main centered">
+          <p className="hint">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !token) {
+    return <AuthPage />;
+  }
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>VoiceCall</h1>
-        <div className="user-chip">
-          <span className={`socket-dot ${socketInfo.cls}`} /> {socketInfo.text}
+        <div className="header-right">
+          <div className="user-chip">
+            <span className={`socket-dot ${socketInfo.cls}`} /> {socketInfo.text}
+          </div>
+          <div className="user-chip">
+            @{user.username}
+            <button className="btn btn-link" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -57,47 +105,55 @@ export default function App() {
             onHangup={hangup}
           />
         ) : (
-          <section className="dialer">
-            <h2>Call a friend</h2>
-            <p className="hint">
-              Your ID: <code>{userId}</code>
-              <br />
-              <small>Open this app in another tab and use that ID to call yourself.</small>
-            </p>
-
-            <label htmlFor="target-id">Target User ID</label>
-            <input
-              id="target-id"
-              type="text"
-              value={targetId}
-              placeholder="e.g. user-abc123"
-              onChange={(e) => setTargetId(e.target.value)}
-            />
-
-            <label htmlFor="target-name">Display Name (optional)</label>
-            <input
-              id="target-name"
-              type="text"
-              value={targetName}
-              placeholder="e.g. John"
-              onChange={(e) => setTargetName(e.target.value)}
-            />
-
+          <>
+            {pushRinging && (
+              <div className="notice-banner">Ringing their device... (push notification sent)</div>
+            )}
             {error && <div className="error-banner">{error}</div>}
+            <div className="content-grid">
+              <ContactsPanel onCall={(id, name) => call(id, name)} />
 
-            <button
-              className="btn btn-call"
-              disabled={!targetId}
-              onClick={() => call(targetId, targetName || `User ${targetId.slice(0, 6)}`)}
-            >
-              Call
-            </button>
-          </section>
+              <section className="dialer">
+                <h2>Call by ID</h2>
+                <p className="hint">
+                  <small>Quick manual dialing — paste another user's ID to call them.</small>
+                </p>
+                <label htmlFor="target-id">User ID</label>
+                <input
+                  id="target-id"
+                  type="text"
+                  value={targetId}
+                  placeholder="e.g. 8f3a...uuid"
+                  onChange={(e) => setTargetId(e.target.value)}
+                />
+                <button
+                  className="btn btn-call btn-block"
+                  disabled={!targetId}
+                  onClick={() => call(targetId, `User ${targetId.slice(0, 6)}`)}
+                >
+                  Call
+                </button>
+
+                <hr className="divider" />
+
+                <h3>Incoming call notifications</h3>
+                <p className="hint">
+                  <small>
+                    Receive call alerts even when the app is closed or on another tab (Web Push).
+                  </small>
+                </p>
+                <button className="btn btn-ghost btn-block" onClick={handleEnableNotifications}>
+                  Enable Notifications
+                </button>
+                {notifStatus && <p className={`hint ${notifStatus.startsWith('Notifications enabled') ? 'ok-text' : ''}`}>{notifStatus}</p>}
+              </section>
+            </div>
+          </>
         )}
       </main>
 
       <footer className="app-footer">
-        <p>PWA · WebRTC · Free</p>
+        <p>PWA · WebRTC · Free · Self-hosted</p>
       </footer>
     </div>
   );

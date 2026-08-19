@@ -11,6 +11,7 @@ export class CallSessionManager {
   private config: WebRTCConfig;
   private myId: string;
   private socketUrl: string;
+  private token: string;
   private targetId: string | null = null;
   private callId: string | null = null;
   private remoteStream: MediaStream | null = null;
@@ -26,12 +27,14 @@ export class CallSessionManager {
   public onRemoteStream: ((stream: MediaStream) => void) | null = null;
   public onError: ((message: string) => void) | null = null;
   public onRemoteHangup: (() => void) | null = null;
+  public onPresence: ((userId: string, online: boolean) => void) | null = null;
+  public onCallPushed: ((callId: string) => void) | null = null;
 
-  constructor(socketUrl: string, myId: string, _myName: string) {
+  constructor(socketUrl: string, myId: string, token: string, _myName: string) {
     this.myId = myId;
     this.socketUrl = socketUrl;
-    const sep = socketUrl.includes('?') ? '&' : '?';
-    this.socket = new WebSocket(`${socketUrl}${sep}userId=${encodeURIComponent(myId)}`);
+    this.token = token;
+    this.socket = this.buildSocket();
     this.config = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -79,8 +82,7 @@ export class CallSessionManager {
       this.reconnectTimer = null;
       if (this.disposed) return;
       try {
-        const sep = this.socketUrl.includes('?') ? '&' : '?';
-        this.socket = new WebSocket(`${this.socketUrl}${sep}userId=${encodeURIComponent(this.myId)}`);
+        this.socket = this.buildSocket();
         this.registerSocketEvents();
         this.socket.onopen = () => {
           this.reconnectAttempts = 0;
@@ -299,6 +301,8 @@ export class CallSessionManager {
     this.onError = null;
     this.onRemoteHangup = null;
     this.onSocketState = null;
+    this.onPresence = null;
+    this.onCallPushed = null;
     try {
       this.socket.close();
     } catch {
@@ -326,6 +330,13 @@ export class CallSessionManager {
     }
   }
 
+  private buildSocket(): WebSocket {
+    const sep = this.socketUrl.includes('?') ? '&' : '?';
+    return new WebSocket(
+      `${this.socketUrl}${sep}token=${encodeURIComponent(this.token)}&userId=${encodeURIComponent(this.myId)}`
+    );
+  }
+
   private registerSocketEvents(): void {
     this.socket.onmessage = async (event) => {
       const msg = JSON.parse(event.data) as SignalingMessage;
@@ -335,6 +346,14 @@ export class CallSessionManager {
           const caller: UserInfo = { id: msg.callerId, name: msg.callerName || `User ${msg.callerId.slice(0, 6)}` };
           this.callId = msg.callId;
           this.onIncomingCall?.(caller, msg.callId);
+          break;
+        }
+        case 'CALL_PUSHED': {
+          this.onCallPushed?.(msg.callId);
+          break;
+        }
+        case 'PRESENCE_UPDATE': {
+          this.onPresence?.(msg.userId, msg.online);
           break;
         }
         case 'CALL_ACCEPTED': {

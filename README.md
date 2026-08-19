@@ -2,40 +2,25 @@
 
 A production-grade, zero-install voice calling application built as a Progressive Web App (PWA) using WebRTC. No app stores, no downloads — install directly from the browser.
 
-## Status: Phase 1 — Core Foundation ✅ COMPLETE (verified working on LAN)
+## Status: Phase 2 — User System & Notifications ✅ COMPLETE (self-hosted, verified end-to-end)
 
-- [x] React + Vite + TypeScript PWA (manifest + service worker)
-- [x] Microphone capture via `getUserMedia()`
-- [x] Node.js + WebSocket signaling server
-- [x] P2P WebRTC audio between two browser tabs
-- [x] P2P WebRTC audio between two devices on same WiFi (HTTPS)
-- [x] Free STUN/TURN servers (Google + Open Relay Project)
-- [x] Call state machine (IDLE / RINGING / CONNECTED / RECONNECTING)
-- [x] Call lifecycle: ring → answer/decline → talk → hangup
-- [x] Web Audio API ringtone (no audio files needed)
-- [x] Remote audio playback (auto-attach + autoplay)
-- [x] Signaling socket auto-reconnect with exponential backoff
-- [x] ICE restart on connection failure
-- [x] Automated signaling tests (7/7 passing) + E2E flow test
-- [x] HTTPS on LAN via mkcert (mic requires secure context)
-- [x] Free TURN relay fallback for strict NATs
+- [x] **Phase 1** — Core Foundation: P2P calling on desktop + mobile (LAN)
+- [x] **Phase 2** — Users, contacts, presence, push notifications, call state machine
 
-## Phase 1 progress notes
+## Phase 2 highlights
 
-All Phase 1 features are implemented, tested, and verified on real devices over WiFi
-(call both directions, audio both ways, ringtone, hangup).
-
-Bugs found and fixed during verification:
-- Callee auto-answered before user clicked Answer (offer now buffered)
-- Duplicate user IDs across tabs (per-tab sessionStorage)
-- Client never sent `?userId=` in WebSocket URL
-- Remote audio stream never attached to `<audio>` element
-- Mobile WS drops causing missed incoming calls (auto-reconnect added)
+- **Accounts**: register/login with username + password (bcrypt + JWT, self-hosted)
+- **Contacts**: search by username, add contacts, call directly from the list
+- **Presence**: green dot shows when a contact is online (live WebSocket updates)
+- **Push notifications**: incoming calls ring via Web Push even when the app is closed (Answer/Decline actions on the notification)
+- **Call flow**: offline callee's call is buffered (60s) so answering from a notification still connects
+- **State machine**: IDLE → RINGING → CONNECTED → RECONNECTING → TERMINATED (Zustand)
+- **$0 + self-hosted**: no Firebase/Supabase — JWT auth, SQLite (`node:sqlite`), and self-generated VAPID keys instead
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 26+ (for built-in `node:sqlite`)
 - Chrome / Chromium browser
 
 ### 1. Start the signaling server
@@ -43,7 +28,7 @@ Bugs found and fixed during verification:
 ```bash
 cd server
 npm install
-npm run dev        # ws://localhost:8080/ws
+npm run dev        # http://localhost:8080 (REST + WebSocket)
 ```
 
 ### 2. Start the client
@@ -51,17 +36,18 @@ npm run dev        # ws://localhost:8080/ws
 ```bash
 cd client
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # https://localhost:5173
 ```
 
 ### 3. Make a call
-1. Open `http://localhost:5173` in **two browser tabs**
-2. Note each tab's **User ID** (shown on the dialer screen)
-3. In Tab A, enter Tab B's User ID and press **Call**
-4. Tab B receives incoming call → click **Answer**
+1. Open the app in **two browsers or profiles** (or two devices on same LAN)
+2. Register an account in each (username + password)
+3. In Browser A, search for B's username → **Add**
+4. Click **Call** next to B's contact → B sees *Incoming Call* → **Answer**
 5. Talk! Audio flows P2P (encrypted via DTLS-SRTP)
 
-> Microphone permission is required. Both tabs must have the app open (WebRTC requires active tabs in Phase 1).
+> Microphone permission is required. Enable **Notifications** in the sidebar to receive
+> incoming call alerts when the app is closed or on another tab.
 
 ## Project Structure
 
@@ -69,18 +55,39 @@ npm run dev        # http://localhost:5173
 client/                     # React + Vite PWA
 ├── public/
 │   ├── manifest.json       # Installable PWA manifest
-│   ├── sw.js               # Service worker (push + caching)
+│   ├── sw.js               # Service worker (push + caching; API never cached)
 │   └── icons/
 ├── src/
-│   ├── components/CallUI.tsx
-│   ├── services/webrtc.ts  # RTCPeerConnection + signaling
+│   ├── components/         # AuthPage, ContactsPanel, CallUI
+│   ├── services/           # webrtc.ts, api.ts, push.ts
 │   ├── hooks/useCallSession.ts
-│   ├── store/callStore.ts  # Zustand call state machine
+│   ├── store/              # callStore.ts, authStore.ts, contactsStore.ts
 │   └── types/
-server/                     # Node.js signaling server
-├── src/index.js            # Express + WebSocket relay
-└── test/signaling.test.mjs # Automated signaling tests
+server/                     # Node.js signaling + API server
+├── src/
+│   ├── index.js            # Express + WebSocket, presence, call routing
+│   ├── auth.js             # Register/login + JWT middleware
+│   ├── users.js            # Profile, search, contacts APIs
+│   ├── push.js             # VAPID keys, push subscribe/send
+│   ├── presence.js         # Connection map + presence broadcasts
+│   └── db.js               # SQLite schema (node:sqlite)
+├── data/voicecall.db       # SQLite database (gitignored)
+└── test/                   # signaling.test, phase2.test, e2e-flow.test
 ```
+
+## API (v1)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/v1/auth/register` | Create account → `{ token, user }` |
+| POST | `/api/v1/auth/login` | Log in → `{ token, user }` |
+| GET | `/api/v1/users/me` | Current profile |
+| GET | `/api/v1/users/search?q=` | Search users by username/display name |
+| POST | `/api/v1/contacts` | Add contact `{ contactId }` |
+| GET | `/api/v1/contacts` | List contacts |
+| GET | `/api/v1/push/vapid-public-key` | VAPID public key for push subscribe |
+| POST | `/api/v1/push/subscribe` | Store Web Push subscription |
+| DELETE | `/api/v1/push/subscribe` | Remove subscription (logout) |
 
 ## Call Lifecycle States
 
@@ -93,18 +100,23 @@ CONNECTED → RECONNECTING → CONNECTED (ICE restart on failure)
 ## Testing
 
 ```bash
-# Signaling server tests (7 checks: connect, call, relay, hangup, errors)
-cd server
-node test/signaling.test.mjs
+# Server API tests (Phase 2: 16 checks — auth, contacts, presence, push)
+cd server && node test/phase2.test.mjs
+
+# Signaling regression (7 checks) + E2E flow
+cd server && node test/signaling.test.mjs && node test/e2e-flow.test.mjs
 ```
+
+Browser E2E (real Chrome via Playwright): register two accounts, add contact,
+presence dot, live call both ways, audio attached, hangup — all verified.
 
 ## Phase Roadmap
 
 | Phase | Status |
 |-------|--------|
-| 1. Core Foundation | ✅ Complete — P2P calling works on desktop + mobile (LAN) |
-| 2. User System & Notifications | ⬜ Next |
-| 3. Production Features | ⬜ |
+| 1. Core Foundation | ✅ Complete — P2P calling on desktop + mobile (LAN) |
+| 2. User System & Notifications | ✅ Complete — self-hosted auth/contacts/presence/push |
+| 3. Production Features | ⬜ Next |
 | 4. Polish & iOS | ⬜ |
 | 5. Advanced Features | ⬜ |
 
@@ -112,4 +124,4 @@ See [`phases/`](phases/) for detailed task breakdowns.
 
 ## Cost: $0
 
-All infrastructure is free tier / open source. See [Browser_Voice_Call_App_Plan.md](Browser_Voice_Call_App_Plan.md) for the full cost breakdown.
+All infrastructure is free tier / open source / self-hosted. See [Browser_Voice_Call_App_Plan.md](Browser_Voice_Call_App_Plan.md) for the full cost breakdown.

@@ -46,40 +46,36 @@ export function notifyCallEnded(call) {
   return sendMessage(`📞 <b>Call finished</b>\n${formatCallMessage(call)}`);
 }
 
-function buildStats(db) {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN status = 'answered' THEN 1 ELSE 0 END) AS answered,
-              SUM(CASE WHEN status = 'answered' THEN duration_sec ELSE 0 END) AS minutes,
-              SUM(CASE WHEN status = 'declined' THEN 1 ELSE 0 END) AS declined,
-              SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) AS missed
-       FROM call_logs`
-    )
-    .get();
-  return row;
+async function buildStats(db) {
+  const row = await db.all(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN status = 'answered' THEN 1 ELSE 0 END) AS answered,
+            SUM(CASE WHEN status = 'answered' THEN duration_sec ELSE 0 END) AS minutes,
+            SUM(CASE WHEN status = 'declined' THEN 1 ELSE 0 END) AS declined,
+            SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) AS missed
+     FROM call_logs`
+  );
+  return row[0];
 }
 
-function buildTodayStats(db) {
-  return db
-    .prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN status = 'answered' THEN duration_sec ELSE 0 END) AS minutes
-       FROM call_logs WHERE date(started_at) = date('now')`
-    )
-    .get();
+async function buildTodayStats(db) {
+  const row = await db.all(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN status = 'answered' THEN duration_sec ELSE 0 END) AS minutes
+     FROM call_logs WHERE date(started_at) = date('now')`
+  );
+  return row[0];
 }
 
-function buildRecentCalls(db, limit = 10) {
-  return db
-    .prepare(
-      `SELECT c.*, u1.display_name AS caller_name, u2.display_name AS callee_name
-       FROM call_logs c
-       JOIN users u1 ON u1.id = c.caller_id
-       JOIN users u2 ON u2.id = c.callee_id
-       ORDER BY c.id DESC LIMIT ?`
-    )
-    .all(limit);
+async function buildRecentCalls(db, limit = 10) {
+  return db.all(
+    `SELECT c.*, u1.display_name AS caller_name, u2.display_name AS callee_name
+     FROM call_logs c
+     JOIN users u1 ON u1.id = c.caller_id
+     JOIN users u2 ON u2.id = c.callee_id
+     ORDER BY c.id DESC LIMIT ?`,
+    [limit]
+  );
 }
 
 export async function handleCommand(db, text) {
@@ -87,7 +83,7 @@ export async function handleCommand(db, text) {
 
   switch (command) {
     case '/stats': {
-      const s = buildStats(db);
+      const s = await buildStats(db);
       const minutes = Math.round((s.minutes || 0) / 60);
       return sendMessage(
         `📊 <b>All-time stats</b>\n` +
@@ -97,14 +93,14 @@ export async function handleCommand(db, text) {
       );
     }
     case '/today': {
-      const t = buildTodayStats(db);
+      const t = await buildTodayStats(db);
       return sendMessage(
         `📅 <b>Today</b>\nCalls: ${t.total || 0}\nTalk time: ${Math.round((t.minutes || 0) / 60)} min`
       );
     }
     case '/calls': {
       const limit = Math.min(parseInt(args[0], 10) || 10, 20);
-      const calls = buildRecentCalls(db, limit);
+      const calls = await buildRecentCalls(db, limit);
       if (!calls.length) return sendMessage('No calls recorded yet.');
       const lines = calls.map((c) => formatCallMessage(c));
       return sendMessage(`🗒 <b>Last ${calls.length} calls</b>\n\n${lines.join('\n\n')}`);

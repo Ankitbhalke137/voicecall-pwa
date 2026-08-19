@@ -16,8 +16,10 @@ services:
         sync: false
       - key: NODE_TLS_REJECT_UNAUTHORIZED
         value: "0"
-      - key: DB_PATH
-        value: /opt/render/project/src/server/data/voicecall.db
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
     healthCheckPath: /health
     autoDeploy: true
     disk:

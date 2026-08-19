@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import webpush from 'web-push';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import db from './db.js';
+import db, { get, run } from './db.js';
 import { requireAuth } from './auth.js';
 
 const VAPID_FILE = new URL('../vapid.json', import.meta.url);
@@ -21,9 +21,7 @@ export function ensureVapidKeys() {
 }
 
 export async function sendPushToUser(userId, payload) {
-  const sub = db
-    .prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?')
-    .get(userId);
+  const sub = await get('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?', [userId]);
   if (!sub) return { status: 'no-subscription' };
   try {
     await webpush.sendNotification(
@@ -37,7 +35,7 @@ export async function sendPushToUser(userId, payload) {
     return { status: 'delivered' };
   } catch (err) {
     if (err.statusCode === 404 || err.statusCode === 410) {
-      db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(userId);
+      await run('DELETE FROM push_subscriptions WHERE user_id = ?', [userId]);
       console.log(`[push] subscription expired for ${userId}, removed`);
       return { status: 'expired' };
     }
@@ -54,25 +52,26 @@ router.get('/vapid-public-key', (_req, res) => {
   res.json({ publicKey: keys.publicKey });
 });
 
-router.post('/subscribe', (req, res) => {
+router.post('/subscribe', async (req, res) => {
   const { endpoint, keys } = req.body || {};
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
     return res.status(400).json({ error: 'endpoint, keys.p256dh and keys.auth are required' });
   }
-  db.prepare(
+  await run(
     `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, updated_at)
      VALUES (?, ?, ?, ?, datetime('now'))
      ON CONFLICT(user_id) DO UPDATE SET
        endpoint = excluded.endpoint,
        p256dh = excluded.p256dh,
        auth = excluded.auth,
-       updated_at = datetime('now')`
-  ).run(req.user.id, endpoint, keys.p256dh, keys.auth);
+       updated_at = datetime('now')`,
+    [req.user.id, endpoint, keys.p256dh, keys.auth]
+  );
   res.status(201).json({ ok: true });
 });
 
-router.delete('/subscribe', (req, res) => {
-  db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?').run(req.user.id);
+router.delete('/subscribe', async (req, res) => {
+  await run('DELETE FROM push_subscriptions WHERE user_id = ?', [req.user.id]);
   res.json({ ok: true });
 });
 

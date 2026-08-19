@@ -85,6 +85,22 @@ self.addEventListener('push', function (event) {
     };
     event.waitUntil(self.registration.showNotification(`Incoming Call from ${data.callerName || 'User'}`, options));
   }
+
+  if (data.type === 'MISSED_CALL') {
+    const options = {
+      body: `Missed call from ${data.callerName || 'Unknown'}`,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: `missed-${data.callId}`,
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: {
+        callId: data.callId,
+        callerId: data.callerId
+      }
+    };
+    event.waitUntil(self.registration.showNotification('Missed Call', options));
+  }
 });
 
 self.addEventListener('notificationclick', function (event) {
@@ -96,7 +112,10 @@ self.addEventListener('notificationclick', function (event) {
     fetch('/api/v1/calls/reject', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callId: notificationData.callId })
+      body: JSON.stringify({ 
+        callId: notificationData.callId,
+        callerId: notificationData.callerId
+      })
     }).catch(() => {});
     return;
   }

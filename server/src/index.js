@@ -44,7 +44,16 @@ app.use('/api/v1/auth', authRouter);
 app.use('/api/v1', usersRouter);
 app.use('/api/v1/push', pushRouter);
 
-app.post('/api/v1/calls/reject', (req, res) => {
+app.post('/api/v1/calls/reject', async (req, res) => {
+  const { callId, callerId } = req.body || {};
+  if (!callId || !callerId) {
+    return res.status(400).json({ error: 'callId and callerId required' });
+  }
+  const target = activeConnections.get(callerId);
+  if (target && target.readyState === WebSocket.OPEN) {
+    sendTo(target, { type: 'CALL_REJECTED', callId });
+    console.log(`[call] rejected via push -> CALL_REJECTED sent to ${callerId}`);
+  }
   res.json({ ok: true });
 });
 
@@ -161,6 +170,17 @@ function finalizeCall(callId, call, status) {
     caller_name: caller?.display_name || caller?.username || 'Unknown',
     callee_name: callee?.display_name || callee?.username || 'Unknown'
   });
+
+  // Send missed call push notification to callee if call was missed
+  if (status === 'missed') {
+    sendPushToUser(call.calleeId, {
+      type: 'MISSED_CALL',
+      callId,
+      callerId: call.callerId,
+      callerName: caller?.display_name || 'Unknown'
+    }).catch(console.error);
+  }
+
   console.log(`[call] ended ${callId} (${status}, ${log.duration_sec ?? 0}s)`);
 }
 

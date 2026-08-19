@@ -70,6 +70,15 @@ function buildTodayStats(db) {
     .get();
 }
 
+function buildMissedCallsStats(db) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS total
+       FROM call_logs WHERE date(started_at) = date('now') AND status = 'missed'`
+    )
+    .get();
+}
+
 function buildRecentCalls(db, limit = 10) {
   return db
     .prepare(
@@ -98,9 +107,14 @@ export async function handleCommand(db, text) {
     }
     case '/today': {
       const t = buildTodayStats(db);
+      const m = buildMissedCallsStats(db);
       return sendMessage(
-        `📅 <b>Today</b>\nCalls: ${t.total || 0}\nTalk time: ${Math.round((t.minutes || 0) / 60)} min`
+        `📅 <b>Today</b>\nCalls: ${t.total || 0}\nMissed: ${m.total || 0}\nTalk time: ${Math.round((t.minutes || 0) / 60)} min`
       );
+    }
+    case '/missed': {
+      const m = buildMissedCallsStats(db);
+      return sendMessage(`📵 <b>Missed calls today:</b> ${m.total || 0}`);
     }
     case '/calls': {
       const limit = Math.min(parseInt(args[0], 10) || 10, 20);

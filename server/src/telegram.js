@@ -1,4 +1,4 @@
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').replace(/\s+/g, '');
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
 const API = 'https://api.telegram.org';
 
@@ -174,7 +174,8 @@ export function startBot(db) {
 
   if (!polling) {
     polling = true;
+    const masked = BOT_TOKEN.length > 10 ? `${BOT_TOKEN.slice(0, 8)}...${BOT_TOKEN.slice(-4)}` : '(short)';
+    console.log(`[telegram] Bot started (long-polling), token ${masked} (${BOT_TOKEN.length} chars)`);
     poll();
-    console.log('[telegram] Bot started (long-polling)');
   }
 }

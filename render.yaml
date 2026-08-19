@@ -16,5 +16,11 @@ services:
         sync: false
       - key: NODE_TLS_REJECT_UNAUTHORIZED
         value: "0"
+      - key: DB_PATH
+        value: /opt/render/project/src/server/data/voicecall.db
     healthCheckPath: /health
     autoDeploy: true
+    disk:
+      name: voicecall-data
+      mountPath: /opt/render/project/src/server/data
+      sizeGB: 1

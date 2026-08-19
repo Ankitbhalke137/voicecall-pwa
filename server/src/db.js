@@ -1,10 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-const DATA_DIR = new URL('../data/', import.meta.url);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = process.env.DB_PATH 
+  ? dirname(process.env.DB_PATH) 
+  : resolve(__dirname, '../data');
 mkdirSync(DATA_DIR, { recursive: true });
 
-const db = new DatabaseSync(new URL('voicecall.db', DATA_DIR));
+const db = new DatabaseSync(process.env.DB_PATH || resolve(DATA_DIR, 'voicecall.db'));
 
 db.exec(`
   PRAGMA journal_mode = WAL;

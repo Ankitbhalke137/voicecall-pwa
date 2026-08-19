@@ -11,9 +11,9 @@ services:
       - key: PORT
         value: 10000
       - key: TELEGRAM_BOT_TOKEN
-        sync: false
+        value: 8856187177:AAEH5CFQz30mkG5Aert9jGpE_200dL38Qo4
       - key: TELEGRAM_ADMIN_CHAT_ID
-        sync: false
+        value: "8446148412"
       - key: NODE_TLS_REJECT_UNAUTHORIZED
         value: "0"
     healthCheckPath: /health

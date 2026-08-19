@@ -26,6 +26,17 @@ router.get('/users/search', (req, res) => {
   res.json({ users: rows });
 });
 
+router.get('/users/all', (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT id, username, display_name FROM users
+       WHERE id != ?
+       ORDER BY username`
+    )
+    .all(req.user.id);
+  res.json({ users: rows });
+});
+
 router.post('/contacts', (req, res) => {
   const { contactId } = req.body || {};
   if (!contactId) {

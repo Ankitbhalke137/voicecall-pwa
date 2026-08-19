@@ -6,19 +6,24 @@ interface ContactsPanelProps {
 }
 
 export default function ContactsPanel({ onCall }: ContactsPanelProps) {
-  const { contacts, presence, searchResults, loading, load, search, clearSearch, add } =
+  const { contacts, presence, searchResults, allUsers, loading, load, search, clearSearch, add, loadAllUsers } =
     useContactsStore();
   const [query, setQuery] = useState('');
 
   useEffect(() => {
     load();
+    loadAllUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSearch(q: string) {
     setQuery(q);
-    await search(q);
+    if (q.trim().length >= 2) {
+      await search(q);
+    }
   }
+
+  const displayUsers = query.trim() ? searchResults : allUsers;
 
   return (
     <div className="flex-1 w-full max-w-md mx-auto pt-6 pb-32 px-container-margin-mobile">
@@ -47,9 +52,9 @@ export default function ContactsPanel({ onCall }: ContactsPanelProps) {
         )}
       </div>
 
-      {searchResults.length > 0 && (
+      {displayUsers.length > 0 && (
         <ul className="search-results bg-surface-container-low/60 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden mb-4">
-          {searchResults.map((u) => (
+          {displayUsers.map((u) => (
             <li
               key={u.id}
               className="search-result flex items-center gap-3 p-4 border-b border-white/5 last:border-b-0"
@@ -76,9 +81,9 @@ export default function ContactsPanel({ onCall }: ContactsPanelProps) {
         Contacts
       </h2>
       {loading && <p className="text-body-md text-on-surface-variant">Loading contacts...</p>}
-      {!loading && contacts.length === 0 && (
+      {!loading && contacts.length === 0 && displayUsers.length === 0 && (
         <p className="text-body-md text-on-surface-variant">
-          No contacts yet. Search for a username above to add your first contact.
+          No users found.
         </p>
       )}
       <ul className="bg-surface-container-low/60 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden">

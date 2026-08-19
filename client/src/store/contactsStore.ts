@@ -5,11 +5,13 @@ interface ContactsState {
   contacts: Contact[];
   presence: Record<string, boolean>;
   searchResults: AuthUser[];
+  allUsers: AuthUser[];
   loading: boolean;
   load: () => Promise<void>;
   search: (q: string) => Promise<void>;
   clearSearch: () => void;
   add: (contactId: string) => Promise<void>;
+  loadAllUsers: () => Promise<void>;
   setPresence: (userId: string, online: boolean) => void;
 }
 
@@ -17,6 +19,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
   contacts: [],
   presence: {},
   searchResults: [],
+  allUsers: [],
   loading: false,
 
   load: async () => {
@@ -41,6 +44,16 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       set({ searchResults: users.filter((u) => !knownIds.has(u.id)) });
     } catch {
       set({ searchResults: [] });
+    }
+  },
+
+  loadAllUsers: async () => {
+    try {
+      const { users } = await api.getAllUsers();
+      const knownIds = new Set(get().contacts.map((c) => c.id));
+      set({ allUsers: users.filter((u) => !knownIds.has(u.id)) });
+    } catch {
+      set({ allUsers: [] });
     }
   },
 

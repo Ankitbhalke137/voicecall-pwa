@@ -65,6 +65,9 @@ export const api = {
   getContacts() {
     return request<{ contacts: Contact[] }>('/api/v1/contacts');
   },
+  getAllUsers() {
+    return request<{ users: AuthUser[] }>('/api/v1/users/all');
+  },
   vapidPublicKey() {
     return request<{ publicKey: string }>('/api/v1/push/vapid-public-key');
   },

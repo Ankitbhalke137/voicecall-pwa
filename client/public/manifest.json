@@ -1,6 +1,11 @@
 {
   "short_name": "VoiceCall",
   "name": "VoiceCall PWA WebRTC Communications",
+  "icons": [
+    { "src": "/voicecall-pwa/icons/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "/voicecall-pwa/icons/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" },
+    { "src": "/voicecall-pwa/icons/apple-touch-icon.png", "type": "image/png", "sizes": "180x180", "purpose": "apple touch icon" }
+  ],
   "start_url": "/voicecall-pwa/?source=pwa",
   "scope": "/voicecall-pwa/",
   "background_color": "#0b1326",

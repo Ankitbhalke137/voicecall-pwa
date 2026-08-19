@@ -3,7 +3,7 @@ services:
     name: voicecall-server
     env: node
     plan: free
-    buildCommand: npm ci
+    buildCommand: npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -18,4 +18,3 @@ services:
         value: "0"
     healthCheckPath: /health
     autoDeploy: true
-    rootDir: server

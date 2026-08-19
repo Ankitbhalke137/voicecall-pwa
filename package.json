@@ -1,0 +1,12 @@
+{
+  "name": "voicecall-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd client && npm ci && npm run build",
+    "start": "cd server && npm start"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

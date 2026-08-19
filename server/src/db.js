@@ -32,6 +32,18 @@ db.exec(`
     auth TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS call_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id TEXT UNIQUE NOT NULL,
+    caller_id TEXT NOT NULL REFERENCES users(id),
+    callee_id TEXT NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL CHECK (status IN ('answered', 'declined', 'missed')),
+    started_at TEXT NOT NULL,
+    answered_at TEXT,
+    ended_at TEXT,
+    duration_sec INTEGER
+  );
 `);
 
 export default db;

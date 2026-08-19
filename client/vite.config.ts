@@ -13,6 +13,7 @@ const cert = fs.existsSync(path.join(certDir, '192.168.0.100+2.pem'))
 
 export default defineConfig({
   plugins: [react()],
+  base: '/voicecall-pwa/',
   server: {
     host: true,
     port: 5173,

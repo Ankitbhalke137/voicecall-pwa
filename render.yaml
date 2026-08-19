@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: voicecall-server
+    env: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ADMIN_CHAT_ID
+        sync: false
+      - key: NODE_TLS_REJECT_UNAUTHORIZED
+        value: "0"
+    healthCheckPath: /health
+    autoDeploy: true

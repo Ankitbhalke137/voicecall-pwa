@@ -95,6 +95,26 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
 - [x] Answer → WebRTC negotiation (offer buffered for offline callee)
 - [x] Offline + no subscription → clear error to caller
 
+### 2.10 UI Redesign — Material 3 Dark Theme (New)
+- [x] Tailwind CSS 3 + Material 3 palette (`#0b1326` bg, `#c0c1ff` primary, `#4ae176` secondary)
+- [x] Full-screen call screens: Active Call (timer, waveform, mute/speaker/hold), Incoming Call (pulse avatar, Answer/Decline), Calling
+- [x] Keypad dialer with formatted display, backspace, long-press clear
+- [x] Recents tab (localStorage-persisted, 50-call limit)
+- [x] Bottom nav (Dialer / Contacts / Recents) + header (notifications, logout)
+- [x] Remote audio element hoisted for reliable stream attachment
+- [x] E2E selectors preserved for all automated tests
+
+### 2.11 Telegram Call Tracker (New)
+- [x] `call_logs` table: call_id, caller_id, callee_id, status (answered/declined/missed), started/answered/ended timestamps, duration_sec
+- [x] Call tracking in signaling server: `activeCalls` Map, finalize on HANGUP/CALL_REJECTED/CALL_ACCEPTED
+- [x] `GET /api/v1/calls` endpoint (auth) — call history for the user
+- [x] `server/src/telegram.js` — zero-dep bot (long-polling):
+  - Posts after every call: status, names, duration, time
+  - Commands: `/stats`, `/today`, `/calls [n]`, `/help`
+  - Safe no-op when `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ADMIN_CHAT_ID` not set
+- [x] Client sends `callId` in HANGUP for accurate correlation
+- [x] FK-safe finalize (try/catch so fake test users don't crash server)
+
 ---
 
 ## Deliverables
@@ -103,11 +123,13 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
 - [x] Incoming calls trigger push notifications
 - [x] Call state machine manages call lifecycle
 - [x] Ringtone plays on incoming calls
+- [x] **New:** Material 3 dark UI with dialer, recents, full-screen call screens
+- [x] **New:** Telegram bot logs all calls with duration and status
 
 ---
 
 ## Testing Checklist
-- [x] Register two test accounts (automated: `server/test/phase2.test.mjs`, 16 checks)
+- [x] Register two test accounts (automated: `server/test/phase2.test.mjs`, **20/20 checks**)
 - [x] User A searches for User B by username
 - [x] User A adds User B as contact
 - [x] User A calls User B (browser E2E: real call connects both ways)
@@ -116,9 +138,11 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
 - [ ] User B receives push notification with app closed → **needs real device/browser verification** (headless Chrome disables Push API; verified server-side path with mock push service)
 - [x] User B clicks Answer → call connects (browser E2E verified via socket path)
 - [x] Call state transitions correctly through all states
+- [x] Call logs written for answered/declined/missed calls
+- [x] Telegram formatter unit test passes; bot inactive without env vars
 
 ## Verification summary (this phase)
-- Server API tests: **16/16** (`node test/phase2.test.mjs`)
+- Server API tests: **20/20** (`node test/phase2.test.mjs`)
 - Phase 1 regression: **7/7** signaling + E2E flow
 - Browser E2E: **8/8** (real Chrome: register → search → add contact → presence dot → call → answer → audio attached → hangup)
 
@@ -127,7 +151,7 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
 ## Tech Stack (Phase 2 — built)
 | Component | Technology | Cost |
 |-----------|-----------|------|
-| Frontend | React + Vite + TypeScript | $0 |
+| Frontend | React + Vite + TypeScript + Tailwind CSS | $0 |
 | Backend | Node.js + Express + ws | $0 |
 | Auth | bcrypt + JWT (self-hosted) | $0 |
 | Push | Web Push API + VAPID (self-hosted) | $0 |
@@ -137,3 +161,8 @@ Add user authentication, contact discovery, push notifications, and call lifecyc
 ---
 
 ## Time Estimate: 10 working days (delivered self-hosted)
+
+## Pending (outside Phase 2 scope)
+- [ ] Real-device push verification (requires phone on same LAN + HTTPS cert trust)
+- [ ] Production deployment (frontend → GitHub Pages, signaling server → Render/Railway/Fly)
+- [ ] iOS PWA install flow / Safari compatibility testing

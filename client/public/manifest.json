@@ -1,22 +1,10 @@
 {
   "short_name": "VoiceCall",
   "name": "VoiceCall PWA WebRTC Communications",
-  "icons": [
-    {
-      "src": "/icons/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ],
-  "start_url": "/?source=pwa",
-  "scope": "/",
-  "background_color": "#0F172A",
-  "theme_color": "#2563EB",
+  "start_url": "/voicecall-pwa/?source=pwa",
+  "scope": "/voicecall-pwa/",
+  "background_color": "#0b1326",
+  "theme_color": "#0b1326",
   "display": "standalone",
   "orientation": "portrait",
   "categories": ["communications", "productivity"]

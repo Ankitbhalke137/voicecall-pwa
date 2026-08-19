@@ -110,7 +110,7 @@ async function main() {
   const token2 = reg2.json.token;
   const userId2 = reg2.json.user.id;
 
-  const search = await api('GET', `/api/v1/users/search?q=${username.slice(0, 5)}`, { token: token2 });
+  const search = await api('GET', `/api/v1/users/search?q=${username}`, { token: token2 });
   const found = search.json?.users?.some((u) => u.id === userId);
   log('Search finds user by username', search.status === 200 && found);
 
@@ -191,6 +191,69 @@ async function main() {
   const offlinePresence = await offlinePresencePromise;
   log('Contact sees PRESENCE_UPDATE on disconnect', offlinePresence.online === false);
 
+  // --- Call tracking: answered call ---
+  const wsA = await connectWs(`token=${encodeURIComponent(token)}`);
+  const wsB = await connectWs(`token=${encodeURIComponent(token2)}`);
+  const incomingB = waitFor(wsB, 'INCOMING_CALL');
+  const answeredCallId = `call-answered-${suffix}`;
+  wsA.send(
+    JSON.stringify({ type: 'INITIATE_CALL', targetUserId: userId2, callId: answeredCallId })
+  );
+  await incomingB;
+  const acceptedA = waitFor(wsA, 'CALL_ACCEPTED');
+  wsB.send(JSON.stringify({ type: 'CALL_ACCEPTED', targetUserId: userId, callId: answeredCallId }));
+  await acceptedA;
+  await new Promise((r) => setTimeout(r, 700));
+  const hangupB = waitFor(wsB, 'HANGUP');
+  wsA.send(JSON.stringify({ type: 'HANGUP', targetUserId: userId2, callId: answeredCallId }));
+  await hangupB;
+  await new Promise((r) => setTimeout(r, 300));
+  const callLogs = await api('GET', '/api/v1/calls', { token: token2 });
+  const answered = callLogs.json?.calls?.find((c) => c.call_id === answeredCallId);
+  log(
+    'Answered call logged with duration',
+    callLogs.status === 200 &&
+      answered?.status === 'answered' &&
+      typeof answered?.duration_sec === 'number',
+    JSON.stringify(answered)
+  );
+
+  // --- Call tracking: declined call ---
+  const incomingB2 = waitFor(wsB, 'INCOMING_CALL');
+  const declinedCallId = `call-declined-${suffix}`;
+  wsA.send(
+    JSON.stringify({ type: 'INITIATE_CALL', targetUserId: userId2, callId: declinedCallId })
+  );
+  await incomingB2;
+  wsB.send(
+    JSON.stringify({ type: 'CALL_REJECTED', targetUserId: userId, callId: declinedCallId })
+  );
+  await new Promise((r) => setTimeout(r, 300));
+  const callLogs2 = await api('GET', '/api/v1/calls', { token });
+  const declined = callLogs2.json?.calls?.find((c) => c.call_id === declinedCallId);
+  log('Declined call logged', declined?.status === 'declined', JSON.stringify(declined));
+
+  // --- Telegram formatter unit test ---
+  const { formatCallMessage, formatDuration, isConfigured } = await import('../src/telegram.js');
+  const formatted = formatCallMessage({
+    status: 'answered',
+    caller_name: 'Alice',
+    callee_name: 'Bob',
+    duration_sec: 125,
+    started_at: '2026-08-19T10:00:00.000Z'
+  });
+  log(
+    'Telegram message formatter',
+    formatted.includes('Alice') && formatted.includes('Bob') && formatted.includes('2m 5s'),
+    formatted.replace(/\n/g, ' | ')
+  );
+  log(
+    'Telegram bot inactive without env vars',
+    !isConfigured() && formatDuration(90) === '1m 30s'
+  );
+
+  wsA.close();
+  wsB.close();
   ws2.close();
   fakePush.close();
   const failed = results.filter((r) => !r.ok);

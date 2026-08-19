@@ -316,12 +316,54 @@ export class CallSessionManager {
     this.remoteStream = null;
 
     if (this.targetId) {
-      this.send({ type: 'HANGUP', targetUserId: this.targetId });
+      this.send({ type: 'HANGUP', targetUserId: this.targetId, callId: this.callId ?? undefined });
     }
     this.targetId = null;
     this.callId = null;
     this.setStatus('TERMINATED');
     setTimeout(() => this.setStatus('IDLE'), 500);
+  }
+
+  // ============ Call controls ============
+  public setMuted(muted: boolean): void {
+    this.localStream?.getAudioTracks().forEach((track) => {
+      track.enabled = !muted;
+    });
+  }
+
+  public async setSpeaker(on: boolean): Promise<void> {
+    const audio = document.getElementById('remote-audio') as HTMLAudioElement | null;
+    if (!audio || !('setSinkId' in audio)) return;
+    try {
+      if (!on) {
+        await (audio as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId('');
+        return;
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const speaker = devices.find(
+        (d) => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications'
+      );
+      if (speaker) {
+        await (audio as HTMLAudioElement & { setSinkId(id: string): Promise<void> }).setSinkId(
+          speaker.deviceId
+        );
+      }
+    } catch {
+      // setSinkId unsupported — audio already routes through the OS speaker
+    }
+  }
+
+  public setHold(holding: boolean): void {
+    this.localStream?.getAudioTracks().forEach((track) => {
+      track.enabled = !holding;
+    });
+    const audio = document.getElementById('remote-audio') as HTMLAudioElement | null;
+    if (!audio) return;
+    if (holding) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
   }
 
   private send(message: SignalingMessage) {

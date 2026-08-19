@@ -16,7 +16,7 @@ export type SignalingMessage =
   | { type: 'SDP_OFFER'; targetUserId: string; sdp: RTCSessionDescriptionInit; senderId?: string }
   | { type: 'SDP_ANSWER'; targetUserId: string; sdp: RTCSessionDescriptionInit; senderId?: string }
   | { type: 'ICE_CANDIDATE'; targetUserId: string; candidate: RTCIceCandidateInit; senderId?: string }
-  | { type: 'HANGUP'; targetUserId: string; senderId?: string }
+  | { type: 'HANGUP'; targetUserId: string; senderId?: string; callId?: string }
   | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean }
   | { type: 'ERROR'; message: string };
 

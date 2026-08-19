@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CallSessionManager } from '../services/webrtc';
 import { useCallStore } from '../store/callStore';
 import { useContactsStore } from '../store/contactsStore';
+import { useRecentsStore } from '../store/recentsStore';
 
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
@@ -19,6 +20,9 @@ export function useCallSession(userId: string, userName: string, token: string |
   const managerRef = useRef<CallSessionManager | null>(null);
   const [socketState, setSocketState] = useState<SocketState>('connecting');
   const [pushRinging, setPushRinging] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(false);
+  const [onHold, setOnHold] = useState(false);
   const {
     status,
     remoteUser,
@@ -30,6 +34,7 @@ export function useCallSession(userId: string, userName: string, token: string |
     reset
   } = useCallStore();
   const setPresence = useContactsStore((s) => s.setPresence);
+  const addRecent = useRecentsStore((s) => s.addRecent);
 
   useEffect(() => {
     if (!userId || !token) return;
@@ -83,6 +88,10 @@ export function useCallSession(userId: string, userName: string, token: string |
   const call = async (targetId: string, targetName: string) => {
     setError(undefined);
     setRemoteUser({ id: targetId, name: targetName });
+    addRecent({ id: targetId, name: targetName, direction: 'out' });
+    setMuted(false);
+    setSpeakerOn(false);
+    setOnHold(false);
     try {
       await managerRef.current?.initiateCall(targetId, targetName);
     } catch (err) {
@@ -94,6 +103,7 @@ export function useCallSession(userId: string, userName: string, token: string |
     setError(undefined);
     localStorage.removeItem(PENDING_ACCEPT_KEY);
     if (managerRef.current && remoteUser) {
+      addRecent({ id: remoteUser.id, name: remoteUser.name, direction: 'in' });
       try {
         await managerRef.current.acceptCall(remoteUser.id);
       } catch (err) {
@@ -102,17 +112,60 @@ export function useCallSession(userId: string, userName: string, token: string |
     }
   };
 
+  const toggleMute = () => {
+    setMuted((m) => {
+      managerRef.current?.setMuted(!m);
+      return !m;
+    });
+  };
+
+  const toggleSpeaker = () => {
+    setSpeakerOn((s) => {
+      managerRef.current?.setSpeaker(!s);
+      return !s;
+    });
+  };
+
+  const toggleHold = () => {
+    setOnHold((h) => {
+      managerRef.current?.setHold(!h);
+      return !h;
+    });
+  };
+
   const decline = () => {
     localStorage.removeItem(PENDING_ACCEPT_KEY);
     managerRef.current?.declineCall();
+    setMuted(false);
+    setSpeakerOn(false);
+    setOnHold(false);
     reset();
   };
 
   const hangup = () => {
     localStorage.removeItem(PENDING_ACCEPT_KEY);
     managerRef.current?.hangup();
+    setMuted(false);
+    setSpeakerOn(false);
+    setOnHold(false);
     reset();
   };
 
-  return { status, remoteUser, error, socketState, pushRinging, call, answer, decline, hangup };
+  return {
+    status,
+    remoteUser,
+    error,
+    socketState,
+    pushRinging,
+    muted,
+    speakerOn,
+    onHold,
+    call,
+    answer,
+    decline,
+    hangup,
+    toggleMute,
+    toggleSpeaker,
+    toggleHold
+  };
 }

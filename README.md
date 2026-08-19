@@ -6,6 +6,8 @@ A production-grade, zero-install voice calling application built as a Progressiv
 
 - [x] **Phase 1** — Core Foundation: P2P calling on desktop + mobile (LAN)
 - [x] **Phase 2** — Users, contacts, presence, push notifications, call state machine
+- [x] **UI Redesign** — Material 3 dark theme, full-screen call screens, dialer, recents tab (verified)
+- [x] **Telegram Call Tracker** — Bot logs all calls with duration, status; `/stats`, `/calls`, `/today` commands
 
 ## Phase 2 highlights
 
@@ -46,8 +48,18 @@ npm run dev        # https://localhost:5173
 4. Click **Call** next to B's contact → B sees *Incoming Call* → **Answer**
 5. Talk! Audio flows P2P (encrypted via DTLS-SRTP)
 
-> Microphone permission is required. Enable **Notifications** in the sidebar to receive
+> Microphone permission is required. Enable **Notifications** in the header to receive
 > incoming call alerts when the app is closed or on another tab.
+
+### Optional: Telegram Call Tracker
+
+```bash
+# Create a bot with @BotFather, then run:
+TELEGRAM_BOT_TOKEN=<token> TELEGRAM_ADMIN_CHAT_ID=<your-chat-id> npm start
+```
+
+The bot will post after every call: who called whom, duration, answered/missed/declined.
+Commands: `/stats` (all-time), `/today`, `/calls [n]`, `/help`.
 
 ## Project Structure
 
@@ -58,18 +70,19 @@ client/                     # React + Vite PWA
 │   ├── sw.js               # Service worker (push + caching; API never cached)
 │   └── icons/
 ├── src/
-│   ├── components/         # AuthPage, ContactsPanel, CallUI
+│   ├── components/         # AuthPage, ContactsPanel, CallUI, Dialer, RecentsPanel
 │   ├── services/           # webrtc.ts, api.ts, push.ts
 │   ├── hooks/useCallSession.ts
-│   ├── store/              # callStore.ts, authStore.ts, contactsStore.ts
+│   ├── store/              # callStore.ts, authStore.ts, contactsStore.ts, recentsStore.ts
 │   └── types/
 server/                     # Node.js signaling + API server
 ├── src/
-│   ├── index.js            # Express + WebSocket, presence, call routing
+│   ├── index.js            # Express + WebSocket, presence, call routing, call_logs
 │   ├── auth.js             # Register/login + JWT middleware
 │   ├── users.js            # Profile, search, contacts APIs
 │   ├── push.js             # VAPID keys, push subscribe/send
 │   ├── presence.js         # Connection map + presence broadcasts
+│   ├── telegram.js         # Telegram bot (long-polling, zero deps)
 │   └── db.js               # SQLite schema (node:sqlite)
 ├── data/voicecall.db       # SQLite database (gitignored)
 └── test/                   # signaling.test, phase2.test, e2e-flow.test
@@ -88,6 +101,7 @@ server/                     # Node.js signaling + API server
 | GET | `/api/v1/push/vapid-public-key` | VAPID public key for push subscribe |
 | POST | `/api/v1/push/subscribe` | Store Web Push subscription |
 | DELETE | `/api/v1/push/subscribe` | Remove subscription (logout) |
+| GET | `/api/v1/calls` | Call history for authenticated user |
 
 ## Call Lifecycle States
 
@@ -100,7 +114,7 @@ CONNECTED → RECONNECTING → CONNECTED (ICE restart on failure)
 ## Testing
 
 ```bash
-# Server API tests (Phase 2: 16 checks — auth, contacts, presence, push)
+# Server API tests (Phase 2: 20 checks — auth, contacts, presence, push, call logs, telegram)
 cd server && node test/phase2.test.mjs
 
 # Signaling regression (7 checks) + E2E flow
@@ -108,7 +122,7 @@ cd server && node test/signaling.test.mjs && node test/e2e-flow.test.mjs
 ```
 
 Browser E2E (real Chrome via Playwright): register two accounts, add contact,
-presence dot, live call both ways, audio attached, hangup — all verified.
+presence dot, live call both ways, audio attached, hangup — all verified (8/8).
 
 ## Phase Roadmap
 
@@ -116,6 +130,8 @@ presence dot, live call both ways, audio attached, hangup — all verified.
 |-------|--------|
 | 1. Core Foundation | ✅ Complete — P2P calling on desktop + mobile (LAN) |
 | 2. User System & Notifications | ✅ Complete — self-hosted auth/contacts/presence/push |
+| 2.5 UI Redesign | ✅ Complete — Material 3 dark, full-screen calls, dialer, recents |
+| 2.5 Telegram Tracker | ✅ Complete — bot logs calls, answers commands |
 | 3. Production Features | ⬜ Next |
 | 4. Polish & iOS | ⬜ |
 | 5. Advanced Features | ⬜ |
@@ -125,3 +141,10 @@ See [`phases/`](phases/) for detailed task breakdowns.
 ## Cost: $0
 
 All infrastructure is free tier / open source / self-hosted. See [Browser_Voice_Call_App_Plan.md](Browser_Voice_Call_App_Plan.md) for the full cost breakdown.
+
+## Pending / Known Gaps
+
+- [ ] Real-device push verification (headless Chrome disables Push API; server path tested with mock)
+- [ ] Production deployment (frontend → GitHub Pages, signaling server → Render/Railway/Fly)
+- [ ] iOS PWA install flow / Safari compatibility
+- [ ] Phase 3: group calls, call recording, message history

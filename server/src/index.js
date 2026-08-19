@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { readFileSync } from 'fs';
-import db, { get, all, run } from './db.js';
+import db from './db.js';
 import authRouter, { verifyToken } from './auth.js';
 import usersRouter from './users.js';
 import pushRouter, { ensureVapidKeys, sendPushToUser } from './push.js';
@@ -48,7 +48,7 @@ app.post('/api/v1/calls/reject', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/v1/calls', async (req, res) => {
+app.get('/api/v1/calls', (req, res) => {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   const payload = token ? verifyToken(token) : null;
@@ -57,18 +57,19 @@ app.get('/api/v1/calls', async (req, res) => {
     return;
   }
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
-  const calls = await all(
-    `SELECT c.call_id, c.caller_id, c.callee_id, c.status, c.started_at, c.answered_at,
-            c.ended_at, c.duration_sec,
-            u1.display_name AS caller_name, u1.username AS caller_username,
-            u2.display_name AS callee_name, u2.username AS callee_username
-     FROM call_logs c
-     JOIN users u1 ON u1.id = c.caller_id
-     JOIN users u2 ON u2.id = c.callee_id
-     WHERE c.caller_id = ? OR c.callee_id = ?
-     ORDER BY c.id DESC LIMIT ?`,
-    [payload.sub, payload.sub, limit]
-  );
+  const calls = db
+    .prepare(
+      `SELECT c.call_id, c.caller_id, c.callee_id, c.status, c.started_at, c.answered_at,
+              c.ended_at, c.duration_sec,
+              u1.display_name AS caller_name, u1.username AS caller_username,
+              u2.display_name AS callee_name, u2.username AS callee_username
+       FROM call_logs c
+       JOIN users u1 ON u1.id = c.caller_id
+       JOIN users u2 ON u2.id = c.callee_id
+       WHERE c.caller_id = ? OR c.callee_id = ?
+       ORDER BY c.id DESC LIMIT ?`
+    )
+    .all(payload.sub, payload.sub, limit);
   res.json({ calls });
 });
 
@@ -82,22 +83,28 @@ function resolveUserIdFromRequest(req) {
   return url.searchParams.get('userId');
 }
 
-async function getUserProfile(userId) {
-  return get('SELECT id, username, display_name FROM users WHERE id = ?', [userId]);
+function getUserProfile(userId) {
+  return db
+    .prepare('SELECT id, username, display_name FROM users WHERE id = ?')
+    .get(userId);
 }
 
-async function getContactIds(userId) {
-  const rows = await all('SELECT contact_id FROM contacts WHERE user_id = ?', [userId]);
-  return rows.map((r) => r.contact_id);
+function getContactIds(userId) {
+  return db
+    .prepare('SELECT contact_id FROM contacts WHERE user_id = ?')
+    .all(userId)
+    .map((r) => r.contact_id);
 }
 
-async function getUsersWithContact(contactId) {
-  const rows = await all('SELECT user_id FROM contacts WHERE contact_id = ?', [contactId]);
-  return rows.map((r) => r.user_id);
+function getUsersWithContact(contactId) {
+  return db
+    .prepare('SELECT user_id FROM contacts WHERE contact_id = ?')
+    .all(contactId)
+    .map((r) => r.user_id);
 }
 
-async function broadcastPresence(userId, online) {
-  const watchers = await getUsersWithContact(userId);
+function broadcastPresence(userId, online) {
+  const watchers = getUsersWithContact(userId);
   if (!watchers.length) return;
   for (const watcherId of watchers) {
     sendPresenceTo(watcherId, userId, online);
@@ -123,7 +130,7 @@ function findActiveCallFor(userId) {
   return null;
 }
 
-async function finalizeCall(callId, call, status) {
+function finalizeCall(callId, call, status) {
   if (!activeCalls.has(callId)) return;
   activeCalls.delete(callId);
   const answeredAt = call.answeredAt;
@@ -140,16 +147,15 @@ async function finalizeCall(callId, call, status) {
     duration_sec: status === 'answered' ? durationSec : null
   };
   try {
-    await run(
+    db.prepare(
       `INSERT INTO call_logs (call_id, caller_id, callee_id, status, started_at, answered_at, ended_at, duration_sec)
-       VALUES (@call_id, @caller_id, @callee_id, @status, @started_at, @answered_at, @ended_at, @duration_sec)`,
-      log
-    );
+       VALUES (@call_id, @caller_id, @callee_id, @status, @started_at, @answered_at, @ended_at, @duration_sec)`
+    ).run(log);
   } catch (err) {
     console.error(`[call] failed to log ${callId}:`, err.message);
   }
-  const caller = await getUserProfile(call.callerId);
-  const callee = await getUserProfile(call.calleeId);
+  const caller = getUserProfile(call.callerId);
+  const callee = getUserProfile(call.calleeId);
   notifyCallEnded({
     ...log,
     caller_name: caller?.display_name || caller?.username || 'Unknown',
@@ -181,7 +187,7 @@ setInterval(() => {
   }
 }, 30_000);
 
-wss.on('connection', async (ws, req) => {
+wss.on('connection', (ws, req) => {
   const userId = resolveUserIdFromRequest(req);
   if (!userId) {
     ws.close(4001, 'Missing userId or token');
@@ -189,8 +195,8 @@ wss.on('connection', async (ws, req) => {
   }
 
   activeConnections.set(userId, ws);
-  await run("UPDATE users SET last_seen = datetime('now') WHERE id = ?", [userId]);
-  await broadcastPresence(userId, true);
+  db.prepare("UPDATE users SET last_seen = datetime('now') WHERE id = ?").run(userId);
+  broadcastPresence(userId, true);
   flushOfflineBuffer(userId);
   console.log(`[+] ${userId} connected (${activeConnections.size} active)`);
 
@@ -205,7 +211,7 @@ wss.on('connection', async (ws, req) => {
 
     switch (data.type) {
       case 'INITIATE_CALL': {
-        const caller = await getUserProfile(userId);
+        const caller = getUserProfile(userId);
         activeCalls.set(data.callId, {
           callerId: userId,
           calleeId: data.targetUserId,
@@ -254,7 +260,7 @@ wss.on('connection', async (ws, req) => {
           if (call) call.answeredAt = Date.now();
         } else {
           const call = activeCalls.get(data.callId);
-          if (call) await finalizeCall(data.callId, call, 'declined');
+          if (call) finalizeCall(data.callId, call, 'declined');
         }
         break;
       }
@@ -283,7 +289,7 @@ wss.on('connection', async (ws, req) => {
           : findActiveCallFor(userId);
         if (found) {
           const status = found.call.answeredAt ? 'answered' : 'missed';
-          await finalizeCall(found.callId, found.call, status);
+          finalizeCall(found.callId, found.call, status);
         }
         break;
       }
@@ -293,10 +299,10 @@ wss.on('connection', async (ws, req) => {
     }
   });
 
-  ws.on('close', async () => {
+  ws.on('close', () => {
     if (userId && activeConnections.get(userId) === ws) {
       activeConnections.delete(userId);
-      await broadcastPresence(userId, false);
+      broadcastPresence(userId, false);
     }
     console.log(`[-] ${userId} disconnected (${activeConnections.size} active)`);
   });

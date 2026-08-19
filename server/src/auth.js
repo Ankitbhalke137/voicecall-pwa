@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
-import db, { run, get } from './db.js';
+import db from './db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'voicecall-dev-secret-change-me';
 const JWT_EXPIRES_IN = '30d';
@@ -21,15 +21,14 @@ export function requireAuth(req, res, next) {
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    get('SELECT id, username, display_name, created_at, last_seen FROM users WHERE id = ?', [payload.sub])
-      .then(user => {
-        if (!user) {
-          return res.status(401).json({ error: 'User no longer exists' });
-        }
-        req.user = user;
-        next();
-      })
-      .catch(() => res.status(401).json({ error: 'Invalid or expired token' }));
+    const user = db
+      .prepare('SELECT id, username, display_name, created_at, last_seen FROM users WHERE id = ?')
+      .get(payload.sub);
+    if (!user) {
+      return res.status(401).json({ error: 'User no longer exists' });
+    }
+    req.user = user;
+    next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
@@ -45,7 +44,7 @@ export function verifyToken(token) {
 
 const router = Router();
 
-router.post('/register', async (req, res) => {
+router.post('/register', (req, res) => {
   const { username, password, displayName } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -59,28 +58,28 @@ router.post('/register', async (req, res) => {
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
-  const existing = await get('SELECT id FROM users WHERE username = ?', [normalized]);
-  if (existing) {
+  if (db.prepare('SELECT id FROM users WHERE username = ?').get(normalized)) {
     return res.status(409).json({ error: 'Username already taken' });
   }
 
   const id = randomUUID();
   const hash = bcrypt.hashSync(String(password), 10);
-  await run(
-    'INSERT INTO users (id, username, display_name, password_hash) VALUES (?, ?, ?, ?)',
-    [id, normalized, String(displayName || normalized).slice(0, 40), hash]
-  );
+  db.prepare(
+    'INSERT INTO users (id, username, display_name, password_hash) VALUES (?, ?, ?, ?)'
+  ).run(id, normalized, String(displayName || normalized).slice(0, 40), hash);
 
   const user = { id, username: normalized, display_name: String(displayName || normalized).slice(0, 40) };
   res.status(201).json({ token: signToken(user), user });
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
-  const row = await get('SELECT * FROM users WHERE username = ?', [String(username).trim().toLowerCase()]);
+  const row = db
+    .prepare('SELECT * FROM users WHERE username = ?')
+    .get(String(username).trim().toLowerCase());
   if (!row || !bcrypt.compareSync(String(password), row.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }

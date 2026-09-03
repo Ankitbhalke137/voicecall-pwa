@@ -1,4 +1,4 @@
-import type { CallStatus, SignalingMessage, UserInfo } from '../types';
+import type { CallQualityMetrics, CallStatus, SignalingMessage, UserInfo } from '../types';
 
 export interface WebRTCConfig {
   iceServers: RTCIceServer[];
@@ -20,8 +20,10 @@ export class CallSessionManager {
   private disposed = false;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private statsInterval: ReturnType<typeof setInterval> | null = null;
 
   public onStatusChange: ((status: CallStatus) => void) | null = null;
+  public onQualityMetrics: ((metrics: CallQualityMetrics) => void) | null = null;
   public onSocketState: ((state: 'connecting' | 'open' | 'closed' | 'error') => void) | null = null;
   public onIncomingCall: ((caller: UserInfo, callId: string) => void) | null = null;
   public onRemoteStream: ((stream: MediaStream) => void) | null = null;
@@ -163,9 +165,12 @@ export class CallSessionManager {
       const state = this.peerConnection?.connectionState;
       if (state === 'connected') {
         this.setStatus('CONNECTED');
+        this.startStatsMonitoring();
       } else if (state === 'failed') {
+        this.stopStatsMonitoring();
         this.handleConnectionFailure();
       } else if (state === 'disconnected') {
+        this.stopStatsMonitoring();
         this.setStatus('RECONNECTING');
       }
     };
@@ -310,7 +315,75 @@ export class CallSessionManager {
     }
   }
 
+  private startStatsMonitoring() {
+    this.stopStatsMonitoring();
+    this.statsInterval = setInterval(async () => {
+      if (!this.peerConnection || this.peerConnection.connectionState !== 'connected') return;
+      try {
+        const stats = await this.peerConnection.getStats();
+        let jitter = 0;
+        let packetLoss = 0;
+        let rtt = 0;
+
+        stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+            jitter = Math.round((report.jitter || 0) * 1000); // convert to ms
+            const totalPackets = (report.packetsReceived || 0) + (report.packetsLost || 0);
+            packetLoss = totalPackets > 0 ? (report.packetsLost || 0) / totalPackets : 0;
+          }
+          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            rtt = Math.round((report.currentRoundTripTime || 0) * 1000); // convert to ms
+          }
+        });
+
+        // Calculate quality score (0.0 - 1.0)
+        let score = 1.0;
+        if (jitter > 30) score -= 0.2;
+        if (jitter > 100) score -= 0.3;
+        if (packetLoss > 0.02) score -= 0.3;
+        if (packetLoss > 0.05) score -= 0.3;
+        if (rtt > 150) score -= 0.2;
+        if (rtt > 300) score -= 0.3;
+        const qualityScore = Math.max(0.1, Math.min(1.0, score));
+
+        let qualityLabel: CallQualityMetrics['qualityLabel'] = 'Excellent';
+        if (qualityScore < 0.4) qualityLabel = 'Poor';
+        else if (qualityScore < 0.7) qualityLabel = 'Fair';
+        else if (qualityScore < 0.9) qualityLabel = 'Good';
+
+        const metrics: CallQualityMetrics = {
+          jitter,
+          packetLoss: Math.round(packetLoss * 100) / 100,
+          rtt,
+          qualityScore: Math.round(qualityScore * 100) / 100,
+          qualityLabel
+        };
+
+        this.onQualityMetrics?.(metrics);
+
+        if (this.targetId) {
+          this.send({
+            type: 'QUALITY_METRICS',
+            targetUserId: this.targetId,
+            callId: this.callId || undefined,
+            metrics
+          });
+        }
+      } catch (err) {
+        console.error('Failed to get stats:', err);
+      }
+    }, 10000);
+  }
+
+  private stopStatsMonitoring() {
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
+  }
+
   public hangup(): void {
+    this.stopStatsMonitoring();
     this.cleanupPending();
     this.remoteStream?.getTracks().forEach((track) => track.stop());
     this.remoteStream = null;

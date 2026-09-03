@@ -47,6 +47,7 @@ export default function App() {
   const {
     status,
     remoteUser,
+    qualityMetrics,
     error,
     socketState,
     pushRinging,
@@ -112,6 +113,7 @@ export default function App() {
           muted={muted}
           speakerOn={speakerOn}
           onHold={onHold}
+          qualityMetrics={qualityMetrics}
           onToggleMute={toggleMute}
           onToggleSpeaker={toggleSpeaker}
           onToggleHold={toggleHold}

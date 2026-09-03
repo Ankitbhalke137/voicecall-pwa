@@ -34,7 +34,12 @@ function waitFor(ws, type, timeoutMs = 3000) {
   });
 }
 
+import db from '../src/db.js';
+
 async function main() {
+  db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, password_hash) VALUES ('alice', 'alice', 'Alice', 'hash')`).run();
+  db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, password_hash) VALUES ('bob', 'bob', 'Bob', 'hash')`).run();
+
   const alice = await connect('alice');
   const bob = await connect('bob');
   log('Both clients connect', true);

@@ -26,10 +26,12 @@ export function useCallSession(userId: string, userName: string, token: string |
   const {
     status,
     remoteUser,
+    qualityMetrics,
     error,
     setStatus,
     setRemoteUser,
     setIncoming,
+    setQualityMetrics,
     setError,
     reset
   } = useCallStore();
@@ -44,6 +46,7 @@ export function useCallSession(userId: string, userName: string, token: string |
     setSocketState('connecting');
     manager.onSocketState = setSocketState;
     manager.onStatusChange = setStatus;
+    manager.onQualityMetrics = setQualityMetrics;
     manager.onIncomingCall = (caller, callId) => {
       setIncoming(caller, callId);
       storePendingAccept(caller.id, callId);
@@ -154,6 +157,7 @@ export function useCallSession(userId: string, userName: string, token: string |
   return {
     status,
     remoteUser,
+    qualityMetrics,
     error,
     socketState,
     pushRinging,

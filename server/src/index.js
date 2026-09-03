@@ -21,7 +21,7 @@ const wss = new WebSocketServer({ server: httpServer });
 
 const offlineBuffers = new Map(); // userId -> { messages: [], expiresAt }
 const OFFLINE_BUFFER_TTL_MS = 60_000;
-const activeCalls = new Map(); // callId -> { callerId, calleeId, startedAt, answeredAt }
+const activeCalls = new Map(); // callId -> { callerId, calleeId, startedAt, answeredAt, qualityMetrics: [] }
 
 app.get('/certs/rootCA.pem', (req, res) => {
   try {
@@ -69,12 +69,12 @@ app.get('/api/v1/calls', (req, res) => {
   const calls = db
     .prepare(
       `SELECT c.call_id, c.caller_id, c.callee_id, c.status, c.started_at, c.answered_at,
-              c.ended_at, c.duration_sec,
+              c.ended_at, c.duration_sec, c.quality_score, c.jitter, c.packet_loss, c.rtt,
               u1.display_name AS caller_name, u1.username AS caller_username,
               u2.display_name AS callee_name, u2.username AS callee_username
        FROM call_logs c
-       JOIN users u1 ON u1.id = c.caller_id
-       JOIN users u2 ON u2.id = c.callee_id
+       LEFT JOIN users u1 ON u1.id = c.caller_id
+       LEFT JOIN users u2 ON u2.id = c.callee_id
        WHERE c.caller_id = ? OR c.callee_id = ?
        ORDER BY c.id DESC LIMIT ?`
     )
@@ -145,6 +145,16 @@ function finalizeCall(callId, call, status) {
   const answeredAt = call.answeredAt;
   const endedAt = Date.now();
   const durationSec = answeredAt ? Math.round((endedAt - answeredAt) / 1000) : 0;
+
+  let avgQuality = null, avgJitter = null, avgPacketLoss = null, avgRtt = null;
+  if (call.qualityMetrics && call.qualityMetrics.length > 0) {
+    const n = call.qualityMetrics.length;
+    avgQuality = call.qualityMetrics.reduce((s, m) => s + (m.qualityScore ?? 1), 0) / n;
+    avgJitter = call.qualityMetrics.reduce((s, m) => s + (m.jitter ?? 0), 0) / n;
+    avgPacketLoss = call.qualityMetrics.reduce((s, m) => s + (m.packetLoss ?? 0), 0) / n;
+    avgRtt = call.qualityMetrics.reduce((s, m) => s + (m.rtt ?? 0), 0) / n;
+  }
+
   const log = {
     call_id: callId,
     caller_id: call.callerId,
@@ -153,12 +163,16 @@ function finalizeCall(callId, call, status) {
     started_at: new Date(call.startedAt).toISOString(),
     answered_at: answeredAt ? new Date(answeredAt).toISOString() : null,
     ended_at: new Date(endedAt).toISOString(),
-    duration_sec: status === 'answered' ? durationSec : null
+    duration_sec: status === 'answered' ? durationSec : null,
+    quality_score: avgQuality,
+    jitter: avgJitter,
+    packet_loss: avgPacketLoss,
+    rtt: avgRtt
   };
   try {
     db.prepare(
-      `INSERT INTO call_logs (call_id, caller_id, callee_id, status, started_at, answered_at, ended_at, duration_sec)
-       VALUES (@call_id, @caller_id, @callee_id, @status, @started_at, @answered_at, @ended_at, @duration_sec)`
+      `INSERT INTO call_logs (call_id, caller_id, callee_id, status, started_at, answered_at, ended_at, duration_sec, quality_score, jitter, packet_loss, rtt)
+       VALUES (@call_id, @caller_id, @callee_id, @status, @started_at, @answered_at, @ended_at, @duration_sec, @quality_score, @jitter, @packet_loss, @rtt)`
     ).run(log);
   } catch (err) {
     console.error(`[call] failed to log ${callId}:`, err.message);
@@ -236,7 +250,8 @@ wss.on('connection', (ws, req) => {
           callerId: userId,
           calleeId: data.targetUserId,
           startedAt: Date.now(),
-          answeredAt: null
+          answeredAt: null,
+          qualityMetrics: []
         });
         const target = activeConnections.get(data.targetUserId);
         if (target && target.readyState === WebSocket.OPEN) {
@@ -293,6 +308,15 @@ wss.on('connection', (ws, req) => {
           sendTo(target, { ...data, senderId: userId });
         } else {
           bufferForOfflineUser(data.targetUserId).messages.push({ ...data, senderId: userId });
+        }
+        break;
+      }
+
+      case 'QUALITY_METRICS': {
+        const found = data.callId ? activeCalls.get(data.callId) : findActiveCallFor(userId)?.call;
+        if (found && data.metrics) {
+          if (!found.qualityMetrics) found.qualityMetrics = [];
+          found.qualityMetrics.push(data.metrics);
         }
         break;
       }

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CallStatus } from '../types';
 
+import type { CallQualityMetrics } from '../types';
+
 interface CallUIProps {
   status: CallStatus;
   remoteName: string;
@@ -10,6 +12,7 @@ interface CallUIProps {
   muted?: boolean;
   speakerOn?: boolean;
   onHold?: boolean;
+  qualityMetrics?: CallQualityMetrics;
   onToggleMute?: () => void;
   onToggleSpeaker?: () => void;
   onToggleHold?: () => void;
@@ -113,6 +116,7 @@ function ActiveCallScreen({
   muted,
   speakerOn,
   onHold,
+  qualityMetrics,
   onToggleMute,
   onToggleSpeaker,
   onToggleHold,
@@ -138,9 +142,21 @@ function ActiveCallScreen({
       <div className="w-full flex justify-between items-center px-container-margin-mobile pt-8 z-10">
         <span className="material-symbols-outlined text-outline">lock</span>
         <div className="flex items-center gap-2 bg-surface-container/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
-          <span className="w-2 h-2 rounded-full bg-secondary" />
+          <span
+            className={`w-2 h-2 rounded-full ${
+              qualityMetrics?.qualityLabel === 'Poor'
+                ? 'bg-error'
+                : qualityMetrics?.qualityLabel === 'Fair'
+                  ? 'bg-yellow-400'
+                  : 'bg-secondary'
+            }`}
+          />
           <span className="font-label-sm text-label-sm text-on-surface-variant">
-            {onHold ? 'On Hold' : 'HD Voice'}
+            {onHold
+              ? 'On Hold'
+              : qualityMetrics?.qualityLabel
+                ? `${qualityMetrics.qualityLabel} Quality`
+                : 'HD Voice'}
           </span>
         </div>
         <span className="material-symbols-outlined text-outline">more_vert</span>

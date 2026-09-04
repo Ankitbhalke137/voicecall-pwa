@@ -16,7 +16,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
+    google_id TEXT UNIQUE,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_seen TEXT
   );

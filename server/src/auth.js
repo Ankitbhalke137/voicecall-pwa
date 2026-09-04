@@ -2,10 +2,14 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 import db from './db.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'voicecall-dev-secret-change-me';
 const JWT_EXPIRES_IN = '30d';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+
+const oAuth2Client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 export function signToken(user) {
   return jwt.sign({ sub: user.id, username: user.username }, JWT_SECRET, {
@@ -73,7 +77,10 @@ router.post('/register', (req, res) => {
 });
 
 router.post('/login', (req, res) => {
-  const { username, password } = req.body || {};
+  const { username, password, googleId } = req.body || {};
+  if (googleId) {
+    return handleGoogleLogin(req, res, googleId);
+  }
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
@@ -92,5 +99,53 @@ router.post('/login', (req, res) => {
   };
   res.json({ token: signToken(user), user });
 });
+
+async function handleGoogleLogin(req, res, googleId) {
+  try {
+    const { token } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ error: 'Google ID token is required' });
+    }
+    const ticket = await oAuth2Client.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+    if (!payload) {
+      return res.status(401).json({ error: 'Invalid Google token' });
+    }
+    const email = payload.email;
+    const name = payload.given_name || payload.name || '';
+    const picture = payload.picture || '';
+
+    let user = db
+      .prepare('SELECT * FROM users WHERE google_id = ?')
+      .get(googleId);
+
+    if (!user) {
+      const normalizedUsername = (email || '').toLowerCase().split('@')[0] || randomUUID();
+      const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(normalizedUsername);
+      if (existing) {
+        normalizedUsername += Date.now();
+      }
+      const userId = randomUUID();
+      db.prepare(
+        'INSERT INTO users (id, username, display_name, password_hash, google_id) VALUES (?, ?, ?, ?, ?)'
+      ).run(userId, normalizedUsername, name || normalizedUsername, null, googleId);
+      user = { id: userId, username: normalizedUsername, display_name: name || normalizedUsername, google_id: googleId };
+    } else {
+      user = {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        google_id: user.google_id
+      };
+    }
+    res.json({ token: signToken(user), user });
+  } catch (err) {
+    console.error('[google] login error:', err.message);
+    res.status(401).json({ error: 'Failed to verify Google token' });
+  }
+}
 
 export default router;

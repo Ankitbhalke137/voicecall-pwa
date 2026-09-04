@@ -9,6 +9,7 @@ interface AuthState {
   register: (username: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
   restore: () => Promise<void>;
+  googleLogin: (googleId: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -31,6 +32,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     localStorage.removeItem('voicecall-token');
     set({ user: null, token: null });
+  },
+
+  googleLogin: async (googleId) => {
+    const { token, user } = await api.googleLogin(googleId);
+    localStorage.setItem('voicecall-token', token);
+    set({ token, user });
   },
 
   restore: async () => {

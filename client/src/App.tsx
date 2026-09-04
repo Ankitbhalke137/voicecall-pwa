@@ -54,13 +54,15 @@ export default function App() {
     muted,
     speakerOn,
     onHold,
+    recording,
     call,
     answer,
     decline,
     hangup,
     toggleMute,
     toggleSpeaker,
-    toggleHold
+    toggleHold,
+    toggleRecording
   } = useCallSession(user?.id || '', user?.display_name || '', token);
 
   const isCallActive =
@@ -113,10 +115,12 @@ export default function App() {
           muted={muted}
           speakerOn={speakerOn}
           onHold={onHold}
+          recording={recording}
           qualityMetrics={qualityMetrics}
           onToggleMute={toggleMute}
           onToggleSpeaker={toggleSpeaker}
           onToggleHold={toggleHold}
+          onToggleRecording={toggleRecording}
         />
       ) : (
         <>

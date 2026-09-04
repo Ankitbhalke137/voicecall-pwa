@@ -23,6 +23,7 @@ export function useCallSession(userId: string, userName: string, token: string |
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(false);
   const [onHold, setOnHold] = useState(false);
+  const [recording, setRecording] = useState(false);
   const {
     status,
     remoteUser,
@@ -136,12 +137,25 @@ export function useCallSession(userId: string, userName: string, token: string |
     });
   };
 
+  const toggleRecording = () => {
+    setRecording((r) => {
+      if (!r) {
+        const ok = managerRef.current?.startRecording();
+        return ok ? true : false;
+      } else {
+        managerRef.current?.stopRecording();
+        return false;
+      }
+    });
+  };
+
   const decline = () => {
     localStorage.removeItem(PENDING_ACCEPT_KEY);
     managerRef.current?.declineCall();
     setMuted(false);
     setSpeakerOn(false);
     setOnHold(false);
+    setRecording(false);
     reset();
   };
 
@@ -151,6 +165,7 @@ export function useCallSession(userId: string, userName: string, token: string |
     setMuted(false);
     setSpeakerOn(false);
     setOnHold(false);
+    setRecording(false);
     reset();
   };
 
@@ -164,12 +179,14 @@ export function useCallSession(userId: string, userName: string, token: string |
     muted,
     speakerOn,
     onHold,
+    recording,
     call,
     answer,
     decline,
     hangup,
     toggleMute,
     toggleSpeaker,
-    toggleHold
+    toggleHold,
+    toggleRecording
   };
 }

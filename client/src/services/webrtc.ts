@@ -21,6 +21,8 @@ export class CallSessionManager {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private statsInterval: ReturnType<typeof setInterval> | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
 
   public onStatusChange: ((status: CallStatus) => void) | null = null;
   public onQualityMetrics: ((metrics: CallQualityMetrics) => void) | null = null;
@@ -424,6 +426,65 @@ export class CallSessionManager {
     } catch {
       // setSinkId unsupported — audio already routes through the OS speaker
     }
+  }
+
+  public startRecording(): boolean {
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') return true;
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioContext();
+      const dest = audioCtx.createMediaStreamDestination();
+
+      if (this.localStream && this.localStream.getAudioTracks().length > 0) {
+        const localSource = audioCtx.createMediaStreamSource(this.localStream);
+        localSource.connect(dest);
+      }
+      if (this.remoteStream && this.remoteStream.getAudioTracks().length > 0) {
+        const remoteSource = audioCtx.createMediaStreamSource(this.remoteStream);
+        remoteSource.connect(dest);
+      }
+
+      this.recordedChunks = [];
+      const recorder = new MediaRecorder(dest.stream);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          this.recordedChunks.push(e.data);
+        }
+      };
+      recorder.onstop = () => {
+        if (this.recordedChunks.length > 0) {
+          const blob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = `call-recording-${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 100);
+        }
+      };
+      recorder.start();
+      this.mediaRecorder = recorder;
+      return true;
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      return false;
+    }
+  }
+
+  public stopRecording(): void {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+      this.mediaRecorder = null;
+    }
+  }
+
+  public isRecording(): boolean {
+    return this.mediaRecorder !== null && this.mediaRecorder.state === 'recording';
   }
 
   public setHold(holding: boolean): void {

@@ -11,6 +11,7 @@ interface ContactsState {
   search: (q: string) => Promise<void>;
   clearSearch: () => void;
   add: (contactId: string) => Promise<void>;
+  remove: (contactId: string) => Promise<void>;
   loadAllUsers: () => Promise<void>;
   setPresence: (userId: string, online: boolean) => void;
 }
@@ -62,7 +63,14 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
   add: async (contactId) => {
     await api.addContact(contactId);
     await get().load();
+    await get().loadAllUsers();
     set({ searchResults: [] });
+  },
+
+  remove: async (contactId) => {
+    set((state) => ({
+      contacts: state.contacts.filter((c) => c.id !== contactId)
+    }));
   },
 
   setPresence: (userId, online) =>

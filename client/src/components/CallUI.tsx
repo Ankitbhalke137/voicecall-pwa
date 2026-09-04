@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CallStatus } from '../types';
 
+import type { CallQualityMetrics } from '../types';
+
 interface CallUIProps {
   status: CallStatus;
   remoteName: string;
@@ -10,9 +12,12 @@ interface CallUIProps {
   muted?: boolean;
   speakerOn?: boolean;
   onHold?: boolean;
+  recording?: boolean;
+  qualityMetrics?: CallQualityMetrics;
   onToggleMute?: () => void;
   onToggleSpeaker?: () => void;
   onToggleHold?: () => void;
+  onToggleRecording?: () => void;
 }
 
 function playRingtone(status: CallStatus): () => void {
@@ -58,12 +63,25 @@ function Avatar({ name, green = false }: { name: string; green?: boolean }) {
   );
 }
 
-function Waveform() {
-  const heights = ['h-2', 'h-6', 'h-10', 'h-4', 'h-8', 'h-5', 'h-3', 'h-2'];
+function Waveform({ active = false }: { active?: boolean }) {
+  const [levels, setLevels] = useState<number[]>([10, 20, 30, 20, 25, 15, 10, 5]);
+
+  useEffect(() => {
+    if (!active) return;
+    const interval = setInterval(() => {
+      setLevels(Array.from({ length: 8 }, () => Math.floor(Math.random() * 32) + 6));
+    }, 150);
+    return () => clearInterval(interval);
+  }, [active]);
+
   return (
     <div className="flex items-center justify-center gap-1.5 h-12">
-      {heights.map((h, i) => (
-        <div key={i} className={`w-1.5 rounded-full bg-primary/60 waveform-bar ${h}`} />
+      {levels.map((lvl, i) => (
+        <div
+          key={i}
+          className="w-1.5 rounded-full bg-primary/80 transition-all duration-150"
+          style={{ height: `${lvl}px` }}
+        />
       ))}
     </div>
   );
@@ -113,9 +131,12 @@ function ActiveCallScreen({
   muted,
   speakerOn,
   onHold,
+  recording,
+  qualityMetrics,
   onToggleMute,
   onToggleSpeaker,
   onToggleHold,
+  onToggleRecording,
   onHangup
 }: CallUIProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -138,9 +159,21 @@ function ActiveCallScreen({
       <div className="w-full flex justify-between items-center px-container-margin-mobile pt-8 z-10">
         <span className="material-symbols-outlined text-outline">lock</span>
         <div className="flex items-center gap-2 bg-surface-container/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
-          <span className="w-2 h-2 rounded-full bg-secondary" />
+          <span
+            className={`w-2 h-2 rounded-full ${
+              qualityMetrics?.qualityLabel === 'Poor'
+                ? 'bg-error'
+                : qualityMetrics?.qualityLabel === 'Fair'
+                  ? 'bg-yellow-400'
+                  : 'bg-secondary'
+            }`}
+          />
           <span className="font-label-sm text-label-sm text-on-surface-variant">
-            {onHold ? 'On Hold' : 'HD Voice'}
+            {onHold
+              ? 'On Hold'
+              : qualityMetrics?.qualityLabel
+                ? `${qualityMetrics.qualityLabel} Quality`
+                : 'HD Voice'}
           </span>
         </div>
         <span className="material-symbols-outlined text-outline">more_vert</span>
@@ -158,7 +191,7 @@ function ActiveCallScreen({
             {status === 'RECONNECTING' ? 'Reconnecting…' : formatElapsed(elapsed)}
           </p>
         </div>
-        <Waveform />
+        <Waveform active={status === 'CONNECTED'} />
       </main>
 
       <div className="fixed bottom-0 w-full max-w-md left-1/2 -translate-x-1/2 pb-10 pt-6 px-container-margin-mobile z-50">
@@ -176,6 +209,12 @@ function ActiveCallScreen({
             onClick={onToggleSpeaker}
           />
           <ControlButton icon="pause" label="Hold" active={onHold} onClick={onToggleHold} />
+          <ControlButton
+            icon="fiber_manual_record"
+            label="Record"
+            active={recording}
+            onClick={onToggleRecording}
+          />
           <button
             className="w-16 h-16 rounded-full flex items-center justify-center bg-error text-on-error shadow-[0_0_20px_rgba(255,180,171,0.3)] btn-press"
             onClick={onHangup}
@@ -272,7 +311,7 @@ function CallingScreen({ remoteName, onHangup }: CallUIProps) {
             Calling...
           </p>
         </div>
-        <Waveform />
+        <Waveform active={true} />
       </div>
 
       <div className="fixed bottom-0 w-full max-w-md left-1/2 -translate-x-1/2 pb-10 pt-6 px-container-margin-mobile z-50">

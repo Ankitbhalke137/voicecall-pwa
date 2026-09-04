@@ -6,6 +6,19 @@ export type CallStatus =
   | 'RECONNECTING'
   | 'TERMINATED';
 
+export interface UserInfo {
+  id: string;
+  name: string;
+}
+
+export interface CallQualityMetrics {
+  jitter?: number;
+  packetLoss?: number;
+  rtt?: number;
+  qualityScore?: number;
+  qualityLabel?: 'Excellent' | 'Good' | 'Fair' | 'Poor';
+}
+
 export type SignalingMessage =
   | { type: 'REGISTER'; userId: string }
   | { type: 'INITIATE_CALL'; targetUserId: string; callId: string }
@@ -18,17 +31,14 @@ export type SignalingMessage =
   | { type: 'ICE_CANDIDATE'; targetUserId: string; candidate: RTCIceCandidateInit; senderId?: string }
   | { type: 'HANGUP'; targetUserId: string; senderId?: string; callId?: string }
   | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean }
+  | { type: 'QUALITY_METRICS'; targetUserId?: string; callId?: string; metrics: CallQualityMetrics }
   | { type: 'ERROR'; message: string };
-
-export interface UserInfo {
-  id: string;
-  name: string;
-}
 
 export interface CallSession {
   callId: string | null;
   status: CallStatus;
   remoteUser: UserInfo | null;
   remoteStream: MediaStream | null;
+  qualityMetrics?: CallQualityMetrics;
   error?: string;
 }

@@ -45,8 +45,32 @@ db.exec(`
     started_at TEXT NOT NULL,
     answered_at TEXT,
     ended_at TEXT,
-    duration_sec INTEGER
+    duration_sec INTEGER,
+    quality_score REAL,
+    jitter REAL,
+    packet_loss REAL,
+    rtt REAL
   );
 `);
+
+// Migration for existing tables
+try {
+  const columns = db.prepare("PRAGMA table_info('call_logs')").all();
+  const columnNames = columns.map((c) => c.name);
+  if (!columnNames.includes('quality_score')) {
+    db.exec('ALTER TABLE call_logs ADD COLUMN quality_score REAL');
+  }
+  if (!columnNames.includes('jitter')) {
+    db.exec('ALTER TABLE call_logs ADD COLUMN jitter REAL');
+  }
+  if (!columnNames.includes('packet_loss')) {
+    db.exec('ALTER TABLE call_logs ADD COLUMN packet_loss REAL');
+  }
+  if (!columnNames.includes('rtt')) {
+    db.exec('ALTER TABLE call_logs ADD COLUMN rtt REAL');
+  }
+} catch (err) {
+  console.error('[db] Migration error:', err.message);
+}
 
 export default db;

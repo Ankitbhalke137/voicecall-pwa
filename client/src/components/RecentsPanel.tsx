@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useRecentsStore } from '../store/recentsStore';
 
 interface RecentsPanelProps {
@@ -16,17 +17,51 @@ function timeAgo(ts: number): string {
 
 export default function RecentsPanel({ onCall }: RecentsPanelProps) {
   const recents = useRecentsStore((s) => s.recents);
+  const [filter, setFilter] = useState<'all' | 'missed'>('all');
+
+  const filteredRecents = recents.filter((r) => {
+    if (filter === 'missed') {
+      return r.direction === 'in' && (r as any).status === 'missed';
+    }
+    return true;
+  });
 
   return (
     <div className="flex-1 w-full max-w-md mx-auto pt-6 pb-32 px-container-margin-mobile">
-      <h2 className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest mb-3">
-        Recents
-      </h2>
-      {recents.length === 0 && (
-        <p className="text-body-md text-on-surface-variant">No recent calls yet.</p>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">
+          Recents
+        </h2>
+        <div className="flex bg-surface-container-high rounded-lg p-0.5 border border-white/5 text-xs">
+          <button
+            className={`px-2.5 py-1 rounded-md transition-colors ${
+              filter === 'all'
+                ? 'bg-primary/20 text-primary font-medium'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+            onClick={() => setFilter('all')}
+          >
+            All
+          </button>
+          <button
+            className={`px-2.5 py-1 rounded-md transition-colors ${
+              filter === 'missed'
+                ? 'bg-primary/20 text-primary font-medium'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+            onClick={() => setFilter('missed')}
+          >
+            Missed
+          </button>
+        </div>
+      </div>
+      {filteredRecents.length === 0 && (
+        <p className="text-body-md text-on-surface-variant">
+          {filter === 'missed' ? 'No missed calls.' : 'No recent calls yet.'}
+        </p>
       )}
       <ul className="bg-surface-container-low/60 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden">
-        {recents.map((r) => (
+        {filteredRecents.map((r) => (
           <li
             key={`${r.id}-${r.ts}`}
             className="flex items-center gap-3 p-4 border-b border-white/5 last:border-b-0"

@@ -23,13 +23,16 @@ export function useCallSession(userId: string, userName: string, token: string |
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(false);
   const [onHold, setOnHold] = useState(false);
+  const [recording, setRecording] = useState(false);
   const {
     status,
     remoteUser,
+    qualityMetrics,
     error,
     setStatus,
     setRemoteUser,
     setIncoming,
+    setQualityMetrics,
     setError,
     reset
   } = useCallStore();
@@ -44,6 +47,7 @@ export function useCallSession(userId: string, userName: string, token: string |
     setSocketState('connecting');
     manager.onSocketState = setSocketState;
     manager.onStatusChange = setStatus;
+    manager.onQualityMetrics = setQualityMetrics;
     manager.onIncomingCall = (caller, callId) => {
       setIncoming(caller, callId);
       storePendingAccept(caller.id, callId);
@@ -133,12 +137,25 @@ export function useCallSession(userId: string, userName: string, token: string |
     });
   };
 
+  const toggleRecording = () => {
+    setRecording((r) => {
+      if (!r) {
+        const ok = managerRef.current?.startRecording();
+        return ok ? true : false;
+      } else {
+        managerRef.current?.stopRecording();
+        return false;
+      }
+    });
+  };
+
   const decline = () => {
     localStorage.removeItem(PENDING_ACCEPT_KEY);
     managerRef.current?.declineCall();
     setMuted(false);
     setSpeakerOn(false);
     setOnHold(false);
+    setRecording(false);
     reset();
   };
 
@@ -148,24 +165,28 @@ export function useCallSession(userId: string, userName: string, token: string |
     setMuted(false);
     setSpeakerOn(false);
     setOnHold(false);
+    setRecording(false);
     reset();
   };
 
   return {
     status,
     remoteUser,
+    qualityMetrics,
     error,
     socketState,
     pushRinging,
     muted,
     speakerOn,
     onHold,
+    recording,
     call,
     answer,
     decline,
     hangup,
     toggleMute,
     toggleSpeaker,
-    toggleHold
+    toggleHold,
+    toggleRecording
   };
 }

@@ -1,5 +1,22 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useAuthStore } from '../store/authStore';
+
+declare global {
+  interface Window {
+    googleAccounts: {
+      id: {
+        initialize: (options: {
+          client_id: string;
+          context?: string;
+          state_cookie_name?: string;
+          ux_mode?: string;
+        }) => void;
+        prompt: () => Promise<{ credential: string }>;
+        renderButton: (options: { theme: string; size: string }, element: HTMLElement) => void;
+      };
+    };
+  }
+}
 
 export default function AuthPage() {
   const login = useAuthStore((s) => s.login);
@@ -11,6 +28,36 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleSignInStatus, setGoogleSignInStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  useEffect(() => {
+    const loadGoogleScript = () => {
+      const script = document.createElement('script');
+      script.id = 'google-gsi-client';
+      script.async = true;
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.defer = true;
+      script.onload = () => {
+        window.googleAccounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          context: 'use',
+          state_cookie_name: 'google_sign_in',
+          ux_mode: 'popup',
+        });
+        const button = document.getElementById('google-signin-button');
+        if (button) {
+          window.googleAccounts.id.renderButton(
+            { theme: 'outline', size: 'large' },
+            button
+          );
+        }
+      };
+      document.head.appendChild(script);
+    };
+
+    const existing = document.getElementById('google-gsi-client');
+    if (!existing) loadGoogleScript();
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -26,6 +73,33 @@ export default function AuthPage() {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleSignInStatus('loading');
+    try {
+      const { credential } = await window.googleAccounts.id.prompt();
+      if (credential) {
+        const result = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: credential })
+        });
+        const data = await result.json();
+        if (result.ok) {
+          localStorage.setItem('voicecall-token', data.token);
+          googleLogin(data.token);
+          setGoogleSignInStatus('success');
+          setMode('login');
+        } else {
+          setGoogleSignInStatus('error');
+          throw new Error(data.error || 'Google login failed');
+        }
+      }
+    } catch (err) {
+      console.error('Google Sign In error:', err);
+      setGoogleSignInStatus('error');
     }
   }
 
@@ -92,15 +166,28 @@ export default function AuthPage() {
             </span>
             <button
               type="button"
-              onClick={() => googleLogin({ googleId: '' })}
-              disabled={busy}
+              onClick={() => handleGoogleSignIn()}
+              disabled={busy || googleSignInStatus === 'loading'}
               className="w-full py-3.5 rounded-full bg-white border border-primary/20 text-primary font-label-sm text-label-sm hover:bg-primary/5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M22.43 12.2c0-.3-.1-.5-.3-.7l-2.3-2.6c-.1-.2-.3-.3-.5-.3-.5 0-.9.4-.9.9v.7c0 .5.5.9.9.9h.8c.6 0 1 .9 1 1v5c0 .7-.2 1.3-.6 1.8l-2.6 2.3c-.2.3-.5.5-.8.5-.5 0-1-.3-1-.8l-6.4-7.3c-.4-.5-1.1-.9-1.9-.9-1.1 0-2.1.5-2.8 1.3l-.5.3-4.4 4.4c-.5.5-.7 1.2-.7 2 0 .7.3 1.4.7 2l1.8 1.8c.4.4 1 .7 1.9.7s1.5-.3 1.9-.7l1.8-1.8c.5-.5.5-1.2.7-1.9zM7.7 4.8l4.2 4.7-4.2 4.7L7.7 20.5l4.7-4.2-4.7-4.2zm4.1 15.4l-1.9-2.1L9.9 5.6l1.9 2.1l4.3 4.8-4.3 4.8zM7.7 7.5l1.9 2.1L7 12.6l1.9-2.1l-1.9-2.1zm15.6-15.4L5.4 11.9l1.9 2.1h-3.8l1.8 2H21.7z"/>
+              {googleSignInStatus === 'loading'
+                ? 'Signing in with Google...'
+                : googleSignInStatus === 'success'
+                  ? 'Signed in successfully!'
+                  : 'Continue with Google'}
+              <svg
+                className="w-5 h-5 mr-2"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M22.43 12.2c0-.3-.1-.5-.3-.7l-2.3-2.6c-.1-.2-.3-.3-.5-.3-.5 0-.9.4-.9.9v.7c0 .5.5.9.9.9h.8c.6 0 1 .9 1 1v5c0 .7-.2 1.3-.6 1.8l-2.6 2.3c-.2.3-.5.5-.8.5-.5 0-1-.3-1-.8l-6.4-7.3c-.4-.5-1.1-.9-1.9-.9-1.1 0-2.1.5-2.8 1.3l-.5.3-4.4 4.4c-.5.5-.7 1.2-.7 2 0 .7.3 1.4.7 2l1.8 1.8c.4.4 1 .7 1.9.7s1.5-.3 1.9-.7l1.8-1.8c.5-.5.5-1.2.7-1.9zM7.7 4.8l4.2 4.7-4.2 4.7L7.7 20.5l4.7-4.2-4.7-4.2zm4.1 15.4l-1.9-2.1L9.9 5.6l1.9 2.1l4.3 4.8-4.3 4.8zM7.7 7.5l1.9 2.1L7 12.6l1.9-2.1l-1.9-2.1zm15.6-15.4L5.4 11.9l1.9 2.1h-3.8l1.8 2H21.7z"
+                />
               </svg>
-              Continue with Google
             </button>
+            {googleSignInStatus === 'error' && (
+              <p className="mt-2 text-caption-xs text-on-error">Google Sign In failed. Try again.</p>
+            )}
           </label>
 
           {error && (

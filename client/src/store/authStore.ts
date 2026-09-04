@@ -34,8 +34,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, token: null });
   },
 
-  googleLogin: async (googleId) => {
-    const { token, user } = await api.googleLogin(googleId);
+  googleLogin: async (googleToken) => {
+    const { token, user } = await api.googleLogin(googleToken);
     localStorage.setItem('voicecall-token', token);
     set({ token, user });
   },

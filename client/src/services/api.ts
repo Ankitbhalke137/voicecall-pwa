@@ -80,10 +80,10 @@ export const api = {
   unsubscribePush() {
     return request<{ ok: boolean }>('/api/v1/push/subscribe', { method: 'DELETE' });
   },
-  googleLogin(googleId) {
+  googleLogin(googleToken: string) {
     return request<{ token: string; user: AuthUser }>('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ googleId })
+      body: JSON.stringify({ token: googleToken })
     });
   }
 };
